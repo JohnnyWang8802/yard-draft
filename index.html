@@ -642,6 +642,9 @@
     let dark = false;
     let passSeed = 1400;
     let analogDirty = true;
+    let sheetCache = null;
+    let lastSettleAnalog = 0;
+    const SETTLE_ANALOG_MIN = 1500;
     let brushesScaled = false;
     let B = {};
     let lot = {};
@@ -660,7 +663,7 @@
     let lastDragDraw = 0;
     let vellumKey = false;
     let deskLift = false;
-    const SETTLE_MS = 320;
+    const SETTLE_MS = 700;
     const DOCK_W = 232;
 
     function overSheet(x, y) {
@@ -1392,8 +1395,13 @@
       lot.scaleY = lot.y + lot.h + Math.max(16, pad * 0.32);
     }
 
+    function invalidateSheetCache() {
+      sheetCache = null;
+    }
+
     function requestAnalog() {
       analogDirty = true;
+      invalidateSheetCache();
       redraw();
     }
 
@@ -1406,7 +1414,14 @@
       if (settleTimer) clearTimeout(settleTimer);
       settleTimer = setTimeout(function () {
         settleTimer = null;
-        requestAnalog();
+        const now = millis();
+        // Throttle full analog settle; between that just blit cache + glyph
+        if (now - lastSettleAnalog >= SETTLE_ANALOG_MIN) {
+          lastSettleAnalog = now;
+          requestAnalog();
+        } else {
+          redraw();
+        }
       }, SETTLE_MS);
     }
 
@@ -1447,6 +1462,7 @@
           const xy = canvasXY(e);
           if (!drawing && onDesk(xy[0], xy[1])) {
             deskLift = true;
+            invalidateSheetCache();
             redraw();
             return;
           }
@@ -1461,6 +1477,7 @@
         function onCnvUp(e) {
           if (deskLift) {
             deskLift = false;
+            invalidateSheetCache();
             redraw();
           }
           if (!drawing) return;
@@ -1497,13 +1514,18 @@
       const xy = canvasXY(evt);
       if (!inLot(xy[0], xy[1])) return false;
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+      // Ensure committed sheet is cached before live drag (no per-frame full redraw)
+      if (!sheetCache) {
+        redraw();
+      }
       drawing = true;
       suppressExport = true;
       hasPtr = true;
       livePts = [[xy[0], xy[1]]];
       liveT0 = millis();
       lastDragDraw = 0;
-      loop();
+      // Do NOT loop() — sampleLive throttles redraw; sheetCache avoids re-brushing history
+      redraw();
       return true;
     }
 
@@ -1737,6 +1759,7 @@
       if (k === "v") {
         if (drawing) return;
         vellumKey = true;
+        invalidateSheetCache();
         redraw();
         return false;
       }
@@ -1762,26 +1785,32 @@
       const k = (key || "").toLowerCase();
       if (k === "v") {
         vellumKey = false;
+        invalidateSheetCache();
         redraw();
         return false;
       }
     }
 
-    function draw() {
-      if (drawing) sampleLive(mouseX, mouseY);
-      if (analogDirty) {
-        passSeed += 1;
-        analogDirty = false;
-        refreshHands();
-      }
-      randomSeed(passSeed);
-      noiseSeed(passSeed);
-
-      background(pal("tray"));
+    function blitSheetCache() {
+      if (!sheetCache) return false;
       push();
-      translate(-width / 2, -height / 2);
-      resetBrush();
+      resetMatrix();
+      imageMode(CORNER);
+      // WEBGL: draw the cached pixels as a screen-aligned quad
+      image(sheetCache, -width / 2, -height / 2, width, height);
+      pop();
+      return true;
+    }
 
+    function bakeSheetCache() {
+      try {
+        sheetCache = get(0, 0, width, height);
+      } catch (err) {
+        sheetCache = null;
+      }
+    }
+
+    function drawCommittedSheet() {
       drawLot();
       drawNorthScale();
       for (let i = 0; i < gestures.length; i++) {
@@ -1805,12 +1834,61 @@
           } else renderGesture(rg);
         }
       }
+    }
+
+    function draw() {
+      if (drawing) sampleLive(mouseX, mouseY);
+      if (analogDirty) {
+        passSeed += 1;
+        analogDirty = false;
+        refreshHands();
+        invalidateSheetCache();
+      }
+      randomSeed(passSeed);
+      noiseSeed(passSeed);
+
+      // Fast path while dragging: blit cached committed sheet + live polyline only
+      if (drawing && sheetCache && livePts) {
+        if (!blitSheetCache()) {
+          // fall through to full draw if blit fails
+        } else {
+          push();
+          translate(-width / 2, -height / 2);
+          drawLivePreview();
+          pop();
+          resetBrush();
+          return;
+        }
+      }
+
+      // Idle hover with fresh cache: blit + hand glyph only (no brush replay)
+      if (!drawing && !analogDirty && sheetCache && hasPtr && !(livePts && livePts.length)) {
+        if (blitSheetCache()) {
+          push();
+          translate(-width / 2, -height / 2);
+          drawHandGlyph();
+          pop();
+          resetBrush();
+          return;
+        }
+      }
+
+      background(pal("tray"));
+      push();
+      translate(-width / 2, -height / 2);
+      resetBrush();
+      drawCommittedSheet();
 
       if (livePts && livePts.length) drawLivePreview();
       else if (hasPtr) drawHandGlyph();
 
       pop();
       resetBrush();
+
+      // Bake committed view when idle (no live stroke)
+      if (!drawing && !(livePts && livePts.length)) {
+        bakeSheetCache();
+      }
     }
 
     function drawVellumSheet() {
