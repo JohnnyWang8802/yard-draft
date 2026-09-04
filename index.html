@@ -1784,24 +1784,12 @@
       }, SETTLE_MS);
     }
 
-    function hasWebGL1() {
-      try {
-        const probe = document.createElement("canvas");
-        return !!(probe.getContext("webgl") || probe.getContext("experimental-webgl"));
-      } catch (err) {
-        return false;
-      }
-    }
-
     function setup() {
       // NEVER call setAttributes — p5 2 throws
       // TypeError: _renderer._setAttributes is not a function
       // and the canvas stays 100x100 blank. This vendor already
       // defaults preserveDrawingBuffer to true.
-      // Some browsers (and embedded webviews) expose WebGL2 only. p5's WEBGL
-      // constant asks for a WebGL1 context, so the sketch would never start
-      // and the sheet stayed blank. Pick the mode the host can actually give.
-      createCanvas(windowWidth, windowHeight, hasWebGL1() ? WEBGL : WEBGL2);
+      createCanvas(windowWidth, windowHeight, WEBGL);
       pixelDensity(1);
       angleMode(DEGREES);
       if (!brushesScaled) {
