@@ -671,6 +671,8 @@
     </nav>
     <div id="foot">
       <nav id="actions">
+        <button type="button" data-act="underlay">Slip a plan under<span class="k">u</span></button>
+        <input type="file" id="underlay-file" accept="image/*" hidden />
         <button type="button" data-act="undo">Undo<span class="k">z</span></button>
         <button type="button" data-act="clear">Clear the sheet<span class="k">c</span></button>
         <div class="tone-row">
@@ -794,6 +796,8 @@
     const DOT_STEP = 14;
     let dotLayer = null;
     let dotLayerKey = "";
+    let underlay = null;
+    let underlayName = "";
 
     function lotCenter() {
       return [lot.x + lot.w * 0.5, lot.y + lot.h * 0.5];
@@ -1566,6 +1570,55 @@
       paintNow();
     }
 
+    function setUnderlay(img, name) {
+      // One image, one texture: free the old one or p5's renderer keeps it in
+      // a Map it never prunes (see freeCachedImage).
+      if (underlay && underlay !== img) freeCachedImage(underlay);
+      underlay = img || null;
+      underlayName = img ? (name || "") : "";
+      updateUnderlayButton();
+      invalidateSheetCache();
+      markSheetChanged();
+      paintNow();
+    }
+
+    function updateUnderlayButton() {
+      const btn = document.querySelector('[data-act="underlay"]');
+      if (!btn) return;
+      const k = btn.querySelector(".k");
+      btn.childNodes[0].nodeValue = underlay ? "Lift the plan out" : "Slip a plan under";
+      btn.title = underlay && underlayName ? underlayName : "";
+      if (k) k.textContent = "u";
+    }
+
+    function loadUnderlayFile(file) {
+      if (!file || !/^image\//.test(file.type || "")) {
+        flashToken("not an image");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function () {
+        loadImage(String(reader.result), function (img) {
+          setUnderlay(img, file.name);
+          flashToken("plan under");
+        }, function () {
+          flashToken("could not read");
+        });
+      };
+      reader.onerror = function () { flashToken("could not read"); };
+      reader.readAsDataURL(file);
+    }
+
+    function toggleUnderlay() {
+      if (underlay) {
+        setUnderlay(null, "");
+        flashToken("plan out");
+        return;
+      }
+      const input = document.getElementById("underlay-file");
+      if (input) input.click();
+    }
+
     function showEmpty() {
       const el = document.getElementById("empty");
       el.classList.toggle("off", gestures.length > 0);
@@ -1605,12 +1658,40 @@
         actBtns[i].addEventListener("click", function (evt) {
           evt.stopPropagation();
           const act = this.dataset.act;
-          if (act === "undo") undoLast();
+          if (act === "underlay") toggleUnderlay();
+          else if (act === "undo") undoLast();
           else if (act === "clear") clearGestures();
           else if (act === "dark") toggleDark();
           else if (act === "export") exportSheet();
         });
       }
+      // Dropping a plan on the sheet is the same gesture as sliding one under
+      ["dragenter", "dragover"].forEach(function (evt) {
+        window.addEventListener(evt, function (e) {
+          if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") !== -1) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        });
+      });
+      window.addEventListener("drop", function (e) {
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        e.preventDefault();
+        loadUnderlayFile(f);
+      });
+
+      const fileInput = document.getElementById("underlay-file");
+      if (fileInput) {
+        fileInput.addEventListener("change", function () {
+          const f = fileInput.files && fileInput.files[0];
+          if (f) loadUnderlayFile(f);
+          // Let the same file be chosen again after it is lifted out
+          fileInput.value = "";
+        });
+      }
+      updateUnderlayButton();
+
       const alphaSl = document.getElementById("vellum-alpha");
       if (alphaSl) {
         alphaSl.value = String(vellumAlpha);
@@ -2232,6 +2313,7 @@
         if (drawing || suppressExport) return;
         exportSheet();
       }
+      else if (k === "u") { toggleUnderlay(); return false; }
       else if (k === "z") undoLast();
       else if (k === "c" || keyCode === BACKSPACE || keyCode === DELETE) {
         clearGestures();
@@ -2497,24 +2579,66 @@
       return false;
     }
 
+    function sheetIsDown() {
+      // Holding v or pressing on the desk lifts the tracing paper off the plan
+      return !(vellumLifted() && !vellumKey);
+    }
+
     function lotBackdropColor() {
-      // p5.brush reads the canvas back and treats a transparent pixel as white
-      // paper (bgColor = mix(vec3(1.0), source.rgb, source.a)), then writes the
-      // result opaque. Ink baked on a cleared canvas therefore burned white
-      // holes through soft mask edges. Flatten the paper into a solid colour so
-      // the brush always composites onto the tone it will be seen against.
+      // The tone an unbacked sheet presents to the brush. p5.brush reads the
+      // canvas back and treats a transparent pixel as white paper
+      // (bgColor = mix(vec3(1.0), source.rgb, source.a)), then writes the
+      // result opaque, so ink baked on a cleared canvas burned white holes
+      // through soft mask edges. The backdrop is always opaque.
       const tray = color(pal("tray"));
-      if (vellumLifted() && !vellumKey) return tray;
+      if (!sheetIsDown()) return tray;
       return lerpColor(tray, color(pal("vellum")), Math.min(1, vellumAlpha / 255));
+    }
+
+    function underlayRect() {
+      // Fit the plan inside the lot, aspect kept, centred — the way a survey
+      // sheet sits square under the trace.
+      if (!underlay || !underlay.width || !underlay.height) return null;
+      const s = Math.min(lot.w / underlay.width, lot.h / underlay.height);
+      const w = underlay.width * s;
+      const h = underlay.height * s;
+      return [lot.x + (lot.w - w) / 2, lot.y + (lot.h - h) / 2, w, h];
     }
 
     function drawLotBackdrop() {
       push();
       noStroke();
       rectMode(CORNER);
-      fill(lotBackdropColor());
+      if (!underlay) {
+        // No plan underneath: one flat opaque tone is the whole backdrop
+        fill(lotBackdropColor());
+        rect(lot.x, lot.y, lot.w, lot.h);
+        noFill();
+        pop();
+        return;
+      }
+      // Desk -> plan -> translucent yellow, all baked into the sheet so the
+      // brush still composites against an opaque surface. The paper's own
+      // alpha is what mutes the plan, exactly as trace over a drawing does,
+      // and the Tone slider doubles as how strongly it reads through.
+      fill(color(pal("tray")));
       rect(lot.x, lot.y, lot.w, lot.h);
       noFill();
+      const r = underlayRect();
+      if (r) {
+        push();
+        imageMode(CORNER);
+        image(underlay, r[0], r[1], r[2], r[3]);
+        pop();
+      }
+      if (sheetIsDown()) {
+        noStroke();
+        const sheet = color(pal("vellum"));
+        sheet.setAlpha(vellumAlpha);
+        fill(sheet);
+        rect(lot.x, lot.y, lot.w, lot.h);
+        noFill();
+      }
       pop();
     }
 
