@@ -1,10 +1,10 @@
-# Yard Draft
+# Garth
 
 Draw roughly. The hand finishes a courtyard you could hang, or build.
 
 A landscape drafting tool on cream trace paper. Five beautifying brushes elevate a rough gesture into a hangable courtyard sketch — topography, hydrology, planting, paving, and enclosure — that also works as a base for further design. The sheet opens as an empty lot — dashed property line, north tick, scale — and stays empty until the hand draws. No preset garden.
 
-This repository is the **WebMCP Challenge** submission for Yard Draft: the pre-challenge drafting sheet, plus agent tools on the same live canvas.
+This repository is the **WebMCP Challenge** submission for Garth (formerly Yard Draft): the pre-challenge drafting sheet, plus agent tools on the same live canvas.
 
 **Live (HTTPS):** https://johnnywang8802.github.io/yard-draft/
 
@@ -33,7 +33,7 @@ Added for the WebMCP Challenge so a person and an agent share one sheet:
 | `lay_path` | Lay a stone walk |
 | `lay_wall` | Lay a wall / edge |
 | `clear_sheet` | Clear the sheet; lot marks stay |
-| `export_sheet` | Take the sheet as `yard-draft.png` |
+| `export_sheet` | Take the sheet as `garth.png` |
 
 Implementation notes:
 
@@ -69,7 +69,7 @@ await window.__YardDraftWebMCP.invoke("lay_water", {
 
 ## Panel
 
-The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Water / Planting / Path / Wall (keys `t` / `w` / `p` / `r` / `l`, aliases `h` / `m` / `f`). Actions: Slip a plan under / Undo / Clear the sheet / Tone / Take the sheet.
+The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Water / Planting / Path / Wall (keys `t` / `w` / `p` / `r` / `l`, aliases `h` / `m` / `f`). Actions: Slip a plan under / Undo / Clear the sheet / Tone / Take the sheet. The yellow sheet sits at a fixed 55%.
 
 - `Terrain` / `t` — drag contours
 - `Water` / `w` — drag a rill; close a loop for a pool
@@ -80,7 +80,7 @@ The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Wat
 - `Undo` / `z` — undo last gesture
 - `Clear the sheet` / `c` / Backspace — clear gestures; the lot stays
 - `Tone` / `d` — cream sheet or night paper
-- `Take the sheet` / `e` — export PNG (`yard-draft`)
+- `Take the sheet` / `e` — export PNG (`garth`)
 
 ## Stack
 
