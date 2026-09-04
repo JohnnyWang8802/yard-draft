@@ -663,6 +663,7 @@
     let lastDragDraw = 0;
     let vellumKey = false;
     let deskLift = false;
+    let vellumAlpha = 152; // hold V + wheel: 40–220
     const SETTLE_MS = 700;
     const DOCK_W = 232;
     let viewZoom = 1;
@@ -1976,6 +1977,9 @@
             pop();
           } else renderGesture(rg);
         }
+      } else if (vellumKey) {
+        // Hold-V peek under, but still show alpha preview of the yellow sheet
+        drawVellumSheet();
       }
     }
 
@@ -2069,6 +2073,16 @@
       if (!overSheet()) return true;
       const delta = evt && evt.deltaY != null ? evt.deltaY : 0;
       if (!delta) return false;
+      // Hold V + wheel: adjust yellow vellum alpha (no new UI)
+      if (vellumKey || (typeof keyIsDown === "function" && keyIsDown(86))) {
+        const step = delta > 0 ? -10 : 10;
+        const next = constrain(vellumAlpha + step, 40, 220);
+        if (next === vellumAlpha) return false;
+        vellumAlpha = next;
+        invalidateSheetCache();
+        redraw();
+        return false;
+      }
       const before = viewZoom;
       const factor = delta > 0 ? 0.92 : 1.08;
       viewZoom = constrain(viewZoom * factor, VIEW_ZMIN, VIEW_ZMAX);
@@ -2090,7 +2104,7 @@
       noStroke();
       rectMode(CORNER);
       const sheet = color(pal("vellum"));
-      sheet.setAlpha(dark ? 148 : 152);
+      sheet.setAlpha(vellumAlpha);
       fill(sheet);
       rect(lot.x, lot.y, lot.w, lot.h);
       noFill();
