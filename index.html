@@ -663,7 +663,8 @@
     let lastDragDraw = 0;
     let vellumKey = false;
     let deskLift = false;
-    let vellumAlpha = 152; // hold V + wheel: 40–220
+    let vellumAlpha = 152; // hold V / hover Tone + wheel: 40–220
+    let toneHover = false;
     const SETTLE_MS = 700;
     const DOCK_W = 232;
     let viewZoom = 1;
@@ -1378,16 +1379,20 @@
       viewZoom = 1;
       viewPanX = 0;
       viewPanY = 0;
-      invalidateSheetCache();
-      redraw();
+      // Minimal: blit world cache at identity — do NOT invalidate (avoids full brush replay)
+      if (sheetCache) {
+        composeViewport(null);
+      } else {
+        redraw();
+      }
       saveCanvas("yard-draft", "png");
       vellumKey = holdKey;
       deskLift = holdDesk;
       viewZoom = holdZ;
       viewPanX = holdPX;
       viewPanY = holdPY;
-      invalidateSheetCache();
-      if (vellumLifted()) redraw();
+      // Restore on-screen view via blit; cache still valid
+      redraw();
     }
 
     function showEmpty() {
@@ -1434,6 +1439,22 @@
           else if (act === "dark") toggleDark();
           else if (act === "export") exportSheet();
         });
+        if (actBtns[i].dataset.act === "dark") {
+          actBtns[i].addEventListener("pointerenter", function () { toneHover = true; });
+          actBtns[i].addEventListener("pointerleave", function () { toneHover = false; });
+          actBtns[i].addEventListener("wheel", function (evt) {
+            evt.preventDefault();
+            evt.stopPropagation();
+            const delta = evt.deltaY || 0;
+            if (!delta) return;
+            const step = delta > 0 ? -10 : 10;
+            const next = Math.max(40, Math.min(220, vellumAlpha + step));
+            if (next === vellumAlpha) return;
+            vellumAlpha = next;
+            invalidateSheetCache();
+            redraw();
+          }, { passive: false });
+        }
       }
     }
 
@@ -2073,8 +2094,8 @@
       if (!overSheet()) return true;
       const delta = evt && evt.deltaY != null ? evt.deltaY : 0;
       if (!delta) return false;
-      // Hold V + wheel: adjust yellow vellum alpha (no new UI)
-      if (vellumKey || (typeof keyIsDown === "function" && keyIsDown(86))) {
+      // Hold V or hover Tone + wheel: adjust yellow vellum alpha (no slider)
+      if (vellumKey || toneHover || (typeof keyIsDown === "function" && keyIsDown(86))) {
         const step = delta > 0 ? -10 : 10;
         const next = constrain(vellumAlpha + step, 40, 220);
         if (next === vellumAlpha) return false;
