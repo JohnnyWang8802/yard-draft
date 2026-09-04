@@ -2700,29 +2700,40 @@
       const rot = 7;                       // a few degrees off true, by hand
       const bx = -sin(rot);                // tip -> tail
       const by = cos(rot);
-      const barb = L * 0.26;
-      const open = 24;
+      const hw = L * 0.115;                // half the needle's width at the tail
 
       // keep the whole mark inside the canvas and clear of the sheet
-      const halfWide = Math.max(nW / 2, barb * sin(open) + 1.5);
+      const halfWide = Math.max(nW / 2, hw + 1.5);
       axis = Math.min(axis, width - halfWide - 5);
       axis = Math.max(axis, lot.x + lot.w + halfWide + 7);
 
       const tipY = lot.hudTop + nH + gap;
       const tailX = axis + bx * L;
       const tailY = tipY + by * L;
+      const px = -by;                      // across the needle
+      const py = bx;
 
+      // A surveyor's needle: one half inked, one half left open — the lit and
+      // shaded sides of the pointer, not decoration.
       push();
-      stroke(ink);
-      strokeCap(ROUND);
       strokeJoin(ROUND);
+      noStroke();
+      fill(ink);
+      beginShape();
+      vertex(axis, tipY);
+      vertex(tailX + px * hw, tailY + py * hw);
+      vertex(tailX, tailY);
+      endShape(CLOSE);
       noFill();
-      strokeWeight(1.5);
-      line(tailX, tailY, axis, tipY);
-      const c1 = cos(open), s1 = sin(open);
-      line(axis, tipY, axis + (bx * c1 - by * s1) * barb, tipY + (bx * s1 + by * c1) * barb);
-      line(axis, tipY, axis + (bx * c1 + by * s1) * barb, tipY + (-bx * s1 + by * c1) * barb);
+      stroke(ink);
+      strokeWeight(1.1);
+      beginShape();
+      vertex(axis, tipY);
+      vertex(tailX - px * hw, tailY - py * hw);
+      vertex(tailX, tailY);
+      endShape(CLOSE);
 
+      strokeCap(ROUND);
       const nx = axis - nW / 2;
       const ny = tipY - gap;
       strokeWeight(1.4);
