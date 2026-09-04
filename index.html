@@ -961,6 +961,13 @@
 
     function dashPath(pts, dashLen, gapLen) {
       if (!pts || pts.length < 2) return;
+      // Short marks must not run under the flow field. analogTooth() switches
+      // p5.brush's "hand" field on, and over a few pixels the field direction
+      // dominates the segment's own: dashes, hachures and ticks get dragged
+      // off across the sheet instead of landing where they were asked for.
+      // That is why shore rings and downslope ticks silently vanished and
+      // stray streaks appeared in the corners.
+      brush.noField();
       let remain = dashLen;
       let drawingDash = true;
       for (let i = 0; i < pts.length - 1; i++) {
@@ -985,6 +992,25 @@
           }
         }
       }
+    }
+
+    let flushTick = 0;
+
+    function flushBrushMarks() {
+      // p5.brush batches marks by colour and only writes the pending batch back
+      // to the canvas on p5's postdraw hook. bakeWorldCache() reads pixels from
+      // inside draw(), so whatever was still buffered never reached the cache —
+      // shore rings, hachures and joints went missing at random depending on
+      // which gesture happened to end on a colour change. Switching colour
+      // forces the write-back; the mark itself is off-canvas, so it paints
+      // nothing and its own dirty rect clamps to empty.
+      try {
+        flushTick = (flushTick + 1) % 2;
+        brush.set(B.HB, flushTick ? "#010203" : "#030201", 0.01);
+        brush.noField();
+        brush.line(-9999, -9999, -9998, -9998);
+      } catch (err) {}
+      resetBrush();
     }
 
     function resetBrush() {
@@ -1032,17 +1058,28 @@
     // than halfW. Dropping the points that travel against the centreline tangent
     // collapses that loop into a mitre instead of leaving a crossed knot.
     function pruneFold(center, edge, closed) {
+      // Where an offset folds back on the inside of a bend, collapse it onto
+      // the previous point instead of dropping it. Dropping left the inner
+      // edge with fewer points than the outer one, so ribbon() built a skewed
+      // polygon: the channel core rode the inside of every curve and the inner
+      // bank line went missing. Same count in, same count out — the two faces
+      // stay in correspondence and the band stays centred on the stroke.
       if (!edge || edge.length < 3 || edge.length !== center.length) return edge;
       const out = [];
       for (let i = 0; i < edge.length; i++) {
         const h = headingAt(center, i, closed);
         const tx = cos(h);
         const ty = sin(h);
+        let px = edge[i][0];
+        let py = edge[i][1];
         if (out.length) {
-          const p = out[out.length - 1];
-          if ((edge[i][0] - p[0]) * tx + (edge[i][1] - p[1]) * ty <= 0) continue;
+          const prev = out[out.length - 1];
+          if ((px - prev[0]) * tx + (py - prev[1]) * ty <= 0) {
+            px = prev[0];
+            py = prev[1];
+          }
         }
-        out.push(edge[i]);
+        out.push([px, py]);
       }
       return out.length >= 2 ? out : edge;
     }
@@ -1642,6 +1679,68 @@
       });
     }
 
+    function remapGestures(from, to) {
+      // Gestures are stored in absolute canvas coordinates, so resizing the
+      // window used to leave everything sitting where the old lot was — half
+      // the sheet ended up outside the property line. Carry the drawing with
+      // the lot, uniformly so nothing is squashed.
+      if (!gestures.length) return;
+      if (!from || !(from.w > 0) || !(from.h > 0)) return;
+      if (!(to.w > 0) || !(to.h > 0)) return;
+      // Scale by the lot's constraining side, not by a fit-inside min of the
+      // two ratios: that is not reversible, so wide -> tall -> wide shrank the
+      // drawing every time instead of returning it to its own size.
+      const s = Math.min(to.w, to.h) / Math.min(from.w, from.h);
+      if (!isFinite(s) || s <= 0) return;
+      const fcx = from.x + from.w / 2;
+      const fcy = from.y + from.h / 2;
+      const tcx = to.x + to.w / 2;
+      const tcy = to.y + to.h / 2;
+      const mapX = function (x) { return tcx + (x - fcx) * s; };
+      const mapY = function (y) { return tcy + (y - fcy) * s; };
+      const mapList = function (list) {
+        if (!list) return;
+        for (let i = 0; i < list.length; i++) {
+          const nx = mapX(list[i][0]);
+          const ny = mapY(list[i][1]);
+          list[i][0] = nx;
+          list[i][1] = ny;
+        }
+      };
+      for (let i = 0; i < gestures.length; i++) {
+        const g = gestures[i];
+        mapList(g.pts);
+        mapList(g.handSrc);
+        // stampHand aliases hand to handSrc for one-point gestures
+        if (g.hand !== g.handSrc) mapList(g.hand);
+        mapList(g.joints);
+        if (g.clumps) {
+          for (let c = 0; c < g.clumps.length; c++) {
+            const cl = g.clumps[c];
+            const nx = mapX(cl.x);
+            const ny = mapY(cl.y);
+            cl.x = nx;
+            cl.y = ny;
+            cl.r *= s;
+          }
+        }
+        if (g.corners) {
+          for (let c = 0; c < g.corners.length; c++) {
+            const co = g.corners[c];
+            const nx = mapX(co.x);
+            const ny = mapY(co.y);
+            co.x = nx;
+            co.y = ny;
+          }
+        }
+        if (g.x != null) g.x = mapX(g.x);
+        if (g.y != null) g.y = mapY(g.y);
+        if (g.r != null) g.r *= s;
+        if (g.halfW != null) g.halfW *= s;
+        if (g.spacing != null) g.spacing *= s;
+      }
+    }
+
     function invalidateSheetCache() {
       freeCachedImage(sheetCache);
       sheetCache = null;
@@ -1805,12 +1904,14 @@
     }
 
     function windowResized() {
+      const prevLot = { x: lot.x, y: lot.y, w: lot.w, h: lot.h };
       resizeCanvas(windowWidth, windowHeight);
       // p5.brush sizes its blend source framebuffer in load(). Without a reload
       // it keeps the old canvas dimensions after a resize and the composite
       // pass writes stale blocks of the previous sheet back onto the paper.
       if (typeof brush.load === "function") brush.load();
       layoutLot();
+      remapGestures(prevLot, lot);
       markSheetChanged();
       requestAnalog();
     }
@@ -2165,6 +2266,7 @@
           drawInkLayers();
         }
         bakingWorld = false;
+        flushBrushMarks();
         pop();
         resetBrush();
         const fresh = get(lot.x, lot.y, lot.w, lot.h);
@@ -2650,6 +2752,7 @@
       resetBrush();
       analogTooth();
       brush.set(B.HB, pal("sepiaDeep"), random(0.46, 0.62));
+      brush.noField();
       for (let i = 1; i <= n; i++) {
         const k = i * downSign;
         const inner = offsets[k - downSign];
@@ -2818,6 +2921,7 @@
 
       analogTooth();
       brush.set(B.HB, pal("ink"), 0.44);
+      brush.noField();
       const joints = g.joints && g.joints.length ? g.joints : resample(pts, halfW * 2.6, false);
       const tickLen = halfW * 0.55;
       function ticksAt(p, heading) {
@@ -2886,12 +2990,17 @@
 
       // Water is read by lines that follow the shore, densest at the edge.
       // A straight ruled hatch across the basin read as a glazed panel.
-      // Start clear of the shoreline stroke — the rim is inked heavy enough
-      // that rings tucked right against it disappear underneath it.
-      const step = Math.max(7, Math.min(width, height) * 0.011);
+      // Insets scale with the basin, not the sheet: a fixed inset either hid
+      // the first ring under the shoreline stroke on a small pool or left a
+      // large one ringed only at its rim. Start clear of the rim, stop before
+      // the middle so the centre stays open water.
+      const bb = bboxOf(outline);
+      const span = Math.max(28, Math.min(bb.w, bb.h));
+      const step = Math.max(8, Math.min(24, span * 0.07));
       const fade = [0.5, 0.32, 0.2];
-      let inset = random(11, 15);
+      let inset = Math.max(9, Math.min(22, span * 0.075)) * random(0.9, 1.15);
       for (let ring = 0; ring < 3; ring++) {
+        if (inset > span * 0.34) break;
         const loop = insetClosed(outline, inset);
         if (!loop || loop.length < 6) break;
         analogTooth();
@@ -2913,32 +3022,35 @@
       const pts = analogize(g.pts, 0.9, 1, false);
       const minS = Math.min(width, height);
       const halfW = g.halfW != null ? g.halfW : minS * 0.022;
-      const rib = ribbon(pts, halfW);
-      const core = ribbon(pts, halfW * 0.5);
       const left = offsetEdge(pts, halfW);
       const right = offsetEdge(pts, -halfW);
       const flow = headingOf(pts);
 
-      // Per-quad fills band the channel like a boardwalk (each quad's texture
-      // fades at its own edge); a heavily textured single polygon blooms a halo
-      // past the banks. One polygon with the texture dialled down does neither.
+      // The channel body is a stroked polyline, not a filled ribbon. A ribbon
+      // polygon self-intersects on any S-bend — the fill then bloomed a wash
+      // off to one side and shoved the deep water onto the inside of the
+      // curves. Per-segment quads avoid that but seam into a boardwalk. A
+      // round-joined stroke is a constant-width channel at any curvature.
+      push();
+      noFill();
+      strokeJoin(ROUND);
+      strokeCap(ROUND);
+      const bodyCol = color(pal("water"));
+      bodyCol.setAlpha(132);
+      stroke(bodyCol);
+      strokeWeight(halfW * 2);
+      beginShape();
+      for (let i = 0; i < pts.length; i++) vertex(pts[i][0], pts[i][1]);
+      endShape();
+      const deepCol = color(pal("waterDeep"));
+      deepCol.setAlpha(72);
+      stroke(deepCol);
+      strokeWeight(halfW * 0.9);
+      beginShape();
+      for (let i = 0; i < pts.length; i++) vertex(pts[i][0], pts[i][1]);
+      endShape();
+      pop();
       resetBrush();
-      if (rib && rib.length >= 4) {
-        brush.fill(pal("water"), 196);
-        brush.fillBleed(0);
-        brush.fillTexture(0.1, 0.22);
-        brush.polygon(rib);
-        brush.noFill();
-      }
-
-      resetBrush();
-      if (core && core.length >= 4) {
-        brush.fill(pal("waterDeep"), 118);
-        brush.fillBleed(0);
-        brush.fillTexture(0.12, 0.2);
-        brush.polygon(core);
-        brush.noFill();
-      }
 
       // Banks are continuous — dashed edges plus cross ticks made the rill
       // read as paving. Flow is carried by sparse downstream chevrons.
@@ -2955,7 +3067,10 @@
 
       analogTooth();
       brush.set(B.HB, pal("waterDeep"), random(0.62, 0.78));
-      const flowGap = Math.max(52, halfW * 6);
+      brush.noField();
+      // Sparse enough to read as flow marks; at a joint-like cadence they
+      // turn the channel back into a paved walk.
+      const flowGap = Math.max(130, halfW * 11);
       let acc = flowGap * 0.5;
       for (let i = 1; i < pts.length; i++) {
         const d = dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
@@ -2965,7 +3080,7 @@
         const x = pts[i][0];
         const y = pts[i][1];
         const heading = atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0]);
-        const arm = halfW * 0.95;
+        const arm = halfW * 0.72;
         // Chevron opening upstream, apex pointing the way the water runs
         brush.line(x, y, x - cos(heading + 34) * arm, y - sin(heading + 34) * arm);
         brush.line(x, y, x - cos(heading - 34) * arm, y - sin(heading - 34) * arm);
@@ -3020,6 +3135,7 @@
 
       analogTooth();
       brush.set(B.rotring, pal("ink"), 0.4);
+      brush.noField();
       const copePts = resample(pts, Math.max(14, halfW * 5.5), closed);
       const copeLen = halfW * 0.5;
       for (let i = 0; i < copePts.length; i++) {
