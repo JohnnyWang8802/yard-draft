@@ -14,10 +14,10 @@ What existed before this challenge window:
 
 - Static one-page app (`index.html`) with p5.js + p5.brush
 - Left rail tools: Terrain / Water / Planting / Path / Wall
-- Hand drag → live polyline → settle/beautify commit on the lot
-- Undo / Clear / Tone / Export PNG
+- Hand drag → live polyline → settle commit on the lot
+- Undo / Clear the sheet / Tone / Take the sheet (PNG)
 - Local `serve.py` on port `8084`
-- MIT license, smoke CI, GitHub Pages deploy path
+- MIT license, GitHub Pages deploy path
 
 Studio-internal prompt and audit files are **not** in this repository.
 
@@ -27,22 +27,22 @@ Added for the WebMCP Challenge so a person and an agent share one sheet:
 
 | Tool | What it does |
 | --- | --- |
-| `lay_contour` | Terrain contour polyline (lot-normalized 0–1) via the same beautify path as a hand drag |
-| `lay_water` | Open polyline → rill; closed loop → pool |
-| `lay_planting` | One point → tree; longer polyline → hedge |
-| `lay_path` | Stone walk / path polyline |
-| `lay_wall` | Wall / edge (open run or boxy enclosure) |
-| `clear_sheet` | Clear gestures; lot marks stay |
-| `export_sheet` | Export `yard-draft.png` |
+| `lay_contour` | Lay a Terrain contour on the lot |
+| `lay_water` | Lay water — open stroke becomes a rill; a closed loop becomes a pool |
+| `lay_planting` | One point plants a tree; a longer stroke lays a hedge |
+| `lay_path` | Lay a stone walk |
+| `lay_wall` | Lay a wall / edge |
+| `clear_sheet` | Clear the sheet; lot marks stay |
+| `export_sheet` | Take the sheet as `yard-draft.png` |
 
 Implementation notes:
 
-- Tools call the **same commit path** as the hand (`agentLay` → existing gesture pipeline).
+- Tools call the **same commit path** as the hand (`agentLay` → existing gesture pipeline). Success flashes `laid` / `cleared` / `taken`.
 - Registration uses `document.modelContext` / `navigator.modelContext` `registerTool` when the browser supports WebMCP.
 - Fallback for local smoke without native WebMCP: `window.__YardDraftWebMCP.invoke(name, input)`.
-- Coordinates are **lot-normalized 0–1** (inside the dashed property line), not full-window pixels.
+- Points are inside the dashed lot, scaled `0–1` left→right / top→bottom.
 
-No new UI chrome was added for the agent path; the rail stays the human pencil tray.
+No new UI chrome was added for the agent path; the rail stays the human pencil tray. Empty-lot line: *You lay roughly. An agent can finish the sheet — same paper.*
 
 ## Play locally
 
@@ -57,8 +57,8 @@ Then open http://127.0.0.1:8084
 In the browser console:
 
 ```js
-await window.__YardDraftWebMCP.invoke("lay_contour", {
-  points: [{x:0.2,y:0.3},{x:0.4,y:0.35},{x:0.6,y:0.3},{x:0.8,y:0.4}]
+await window.__YardDraftWebMCP.invoke("lay_water", {
+  points: [{x:0.2,y:0.4},{x:0.5,y:0.55},{x:0.8,y:0.35}]
 })
 ```
 
@@ -69,7 +69,7 @@ await window.__YardDraftWebMCP.invoke("lay_contour", {
 
 ## Panel
 
-The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Water / Planting / Path / Wall (keys `t` / `w` / `p` / `r` / `l`, aliases `h` / `m` / `f`). Actions: Undo / Clear / Export. Tone or `d` for dark paper.
+The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Water / Planting / Path / Wall (keys `t` / `w` / `p` / `r` / `l`, aliases `h` / `m` / `f`). Actions: Undo / Clear the sheet / Tone / Take the sheet.
 
 - `Terrain` / `t` — drag contours
 - `Water` / `w` — drag a rill; close a loop for a pool
@@ -77,9 +77,9 @@ The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Wat
 - `Path` / `r` — drag a stone walk
 - `Wall` / `l` — drag a wall / retaining edge
 - `Undo` / `z` — undo last gesture
-- `Clear` / `c` / Backspace — clear gestures; the lot stays
+- `Clear the sheet` / `c` / Backspace — clear gestures; the lot stays
 - `Tone` / `d` — cream sheet or night paper
-- `Export` / `e` — export PNG (`yard-draft`)
+- `Take the sheet` / `e` — export PNG (`yard-draft`)
 
 ## Stack
 
@@ -87,7 +87,7 @@ Static HTML/CSS/JS. p5.js plus p5.brush in `vendor/`. Local: `python3 serve.py` 
 
 ## Deploy
 
-GitHub Pages, source branch `main`, folder `/`. Merge by PR only once the challenge window is closed. Confirm: HTTP 200 on `/`, empty lot with left rail, and WebMCP tools present in page source.
+GitHub Pages, source branch `main`, folder `/`. Confirm: HTTP 200 on `/`, empty lot with left rail, and WebMCP tools present in page source.
 
 Pages URL: https://johnnywang8802.github.io/yard-draft/
 
