@@ -234,6 +234,33 @@
       opacity: 0.18;
       pointer-events: none;
     }
+    #webmcp-pill {
+      display: none;
+      position: fixed;
+      left: calc(232px + (100vw - 232px) / 2);
+      bottom: 28px;
+      transform: translateX(-50%);
+      z-index: 16;
+      pointer-events: none;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      color: var(--ink);
+      background: color-mix(in srgb, var(--paper) 72%, transparent);
+      border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+      box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
+      opacity: 0.78;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      white-space: nowrap;
+    }
+    #webmcp-pill.on { display: block; }
+    body.dark #webmcp-pill {
+      background: color-mix(in srgb, var(--paper) 55%, transparent);
+      border-color: color-mix(in srgb, var(--ink) 22%, transparent);
+    }
     #token { display: none;
       position: fixed;
       left: 50%;
@@ -262,9 +289,10 @@
 </head>
 <body>
   <div id="token"></div>
+  <div id="webmcp-pill" aria-hidden="true">7 tools on this sheet</div>
   <div id="empty">
     <div class="prompt">Lay a contour</div>
-    <div class="line">You lay roughly. An agent can finish the sheet — same paper.</div>
+    <div class="line">You sketch the idea. An agent finishes a courtyard you could hang.</div>
   </div>
   <div id="dock">
     <header id="head">
@@ -584,6 +612,7 @@
     let B = {};
     let lot = {};
     let gestures = [];
+    let agentPending = false;
     let livePts = null;
     let strokeLock = false;
     let liveT0 = 0;
@@ -1528,6 +1557,7 @@
 
     function commitLive(pts) {
       if (!pts || !pts.length) return;
+      const beforeCount = gestures.length;
       const len = polyLen(pts);
       let maxDisp = 0;
       const p0 = pts[0];
@@ -1549,6 +1579,7 @@
           };
           stampHand(tree, [p], false);
           gestures.push(tree);
+          if (agentPending) tree.agent = true;
         }
         showEmpty();
         return;
@@ -1659,6 +1690,9 @@
         stampHand(wallG, copy, closed);
         gestures.push(wallG);
       }
+      if (agentPending) {
+        for (let i = beforeCount; i < gestures.length; i++) gestures[i].agent = true;
+      }
       showEmpty();
     }
 
@@ -1714,10 +1748,26 @@
 
       drawLot();
       drawNorthScale();
-      for (let i = 0; i < gestures.length; i++) drawHandLayer(gestures[i]);
+      for (let i = 0; i < gestures.length; i++) {
+        const hg = gestures[i];
+        if (hg.agent) {
+          push();
+          drawingContext.globalAlpha *= 0.78;
+          drawHandLayer(hg);
+          pop();
+        } else drawHandLayer(hg);
+      }
       if (!vellumLifted()) {
         drawVellumSheet();
-        for (let i = 0; i < gestures.length; i++) renderGesture(gestures[i]);
+        for (let i = 0; i < gestures.length; i++) {
+          const rg = gestures[i];
+          if (rg.agent) {
+            push();
+            drawingContext.globalAlpha *= 0.78;
+            renderGesture(rg);
+            pop();
+          } else renderGesture(rg);
+        }
       }
 
       if (livePts && livePts.length) drawLivePreview();
@@ -2374,7 +2424,12 @@
       mode = toolMode;
       liveT0 = millis() - 900;
       const before = gestures.length;
-      commitLive(pts);
+      agentPending = true;
+      try {
+        commitLive(pts);
+      } finally {
+        agentPending = false;
+      }
       showEmpty();
       requestAnalog();
       redraw();
@@ -2578,6 +2633,15 @@
           return t.execute(input || {});
         }
       };
+
+      function showWebmcpPill() {
+        const el = document.getElementById("webmcp-pill");
+        if (el) {
+          el.classList.add("on");
+          el.setAttribute("aria-hidden", "false");
+        }
+      }
+      showWebmcpPill();
 
       const modelContext = document.modelContext || navigator.modelContext;
       if (!modelContext || typeof modelContext.registerTool !== "function") {
