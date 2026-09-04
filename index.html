@@ -1,0 +1,2609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Yard Draft</title>
+  <style>
+    :root {
+      --paper: #efe6d0;
+      --tray:  #FFFFFF;
+      --ink:   #2c281f;
+      --olive: #55613a;
+      --terra: #8f4e38;
+      --water: #6e7f86;
+      --mute:  rgba(44,40,31,0.55);
+    }
+    body.dark {
+      --paper: #1A1A1A;
+      --tray:  #111111;
+      --ink:   #efe6d0;
+      --mute:  rgba(239,230,208,0.55);
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--tray);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    canvas { display: block; }
+    #dock {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 232px;
+      z-index: 30;
+      pointer-events: auto;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 14px 18px;
+      background: var(--tray);
+      border-right: 1px solid var(--ink);
+      color: var(--ink);
+      overflow-y: auto;
+      user-select: none;
+      font-family: Helvetica Neue, Helvetica, Arial, sans-serif;
+    }
+    #head {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 36px;
+      width: 204px;
+      margin-bottom: 12px;
+      color: var(--ink);
+    }
+    #head .mark {
+      flex-shrink: 0;
+      display: block;
+      width: 28px;
+      height: 28px;
+      overflow: visible;
+    }
+    #title {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      line-height: 1.2;
+      color: var(--ink);
+    }
+    #tools {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      flex-shrink: 0;
+    }
+    .tool {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      height: 56px;
+      box-sizing: border-box;
+      margin: 0 0 4px;
+      padding: 8px 10px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      appearance: none;
+      -webkit-appearance: none;
+      text-align: left;
+      color: var(--ink);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .tool:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+    .tool:focus { outline: none; }
+    .tool:focus-visible { box-shadow: inset 0 0 0 1px var(--ink); }
+    .tool.on {
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .tool.on:hover { background: var(--ink); }
+    .tool .chip {
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      display: block;
+    }
+    .tool .meta { min-width: 0; flex: 1; }
+    .tool .name {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.1;
+      display: block;
+      color: var(--ink);
+      opacity: 0.82;
+    }
+    .tool.on .name {
+      color: var(--paper);
+      opacity: 1;
+    }
+    .tool .k {
+      display: none;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+      margin-left: auto;
+      color: var(--paper);
+    }
+    .tool.on .k { display: inline; }
+    .chip .ink { stroke: var(--ink); fill: none; }
+    .chip .sap { stroke: #6a7a3d; fill: none; }
+    .chip .olive { fill: var(--olive); stroke: var(--tray); stroke-width: 1.2; }
+    .tool.on .chip .olive { stroke: none; }
+    .chip .pool { fill: var(--water); }
+    .chip .terra { fill: #b56848; }
+    .chip .rill { stroke: var(--water); fill: none; }
+    .tool.on .chip .ink { stroke: var(--paper); }
+    #foot {
+      margin-top: auto;
+      flex-shrink: 0;
+    }
+    #tone {
+      display: block;
+      margin: 0 0 8px;
+      padding: 0;
+      background: none;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: inherit;
+      font-size: 12px;
+      line-height: 1.2;
+      color: var(--mute);
+      cursor: pointer;
+      text-align: left;
+    }
+    #tone:focus { outline: none; }
+    #tone:focus-visible { box-shadow: inset 0 0 0 1px var(--ink); }
+    #actions {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+    }
+    #actions button {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      min-height: 40px;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0 4px;
+      background: none;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      appearance: none;
+      -webkit-appearance: none;
+      font-size: 12px;
+      letter-spacing: 0.03em;
+      color: var(--ink);
+      cursor: pointer;
+      font-family: inherit;
+      text-align: left;
+    }
+    #actions button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+    #actions button:focus { outline: none; }
+    #actions button:focus-visible { box-shadow: inset 0 0 0 1px var(--ink); }
+    #actions .k {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: var(--mute);
+    }
+    #empty {
+      position: fixed;
+      left: 232px;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      pointer-events: none;
+      z-index: 15;
+      color: var(--ink);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    #empty.off { display: none; }
+    #empty .prompt {
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      color: var(--ink);
+      opacity: 0.22;
+      pointer-events: none;
+    }
+    #empty .line {
+      font-size: 12px;
+      color: var(--ink);
+      opacity: 0.18;
+      pointer-events: none;
+    }
+    #token { display: none;
+      position: fixed;
+      left: 50%;
+      top: 44%;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+      pointer-events: none;
+      font-size: 9vw;
+      font-weight: 500;
+      letter-spacing: -0.05em;
+      color: #2c281f;
+      opacity: 0;
+      white-space: nowrap;
+      transition: opacity 0.55s ease-out;
+    }
+    body.dark #token { color: #efe6d0; }
+    #token.on {
+      opacity: 0.10;
+      transition: opacity 0.07s linear;
+    }
+  </style>
+  <script src="vendor/p5.min.js"></script>
+  <script>window.p5 || document.write('<script src="https://cdn.jsdelivr.net/npm/p5@2.2.3/lib/p5.min.js"><\/script>')</script>
+  <script src="vendor/p5.brush.js"></script>
+  <script>window.brush || document.write('<script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.2/dist/p5.brush.js"><\/script>')</script>
+</head>
+<body>
+  <div id="token"></div>
+  <div id="empty">
+    <div class="prompt">Lay a contour</div>
+    <div class="line">A sheet you could hang, or take.</div>
+  </div>
+  <div id="dock">
+    <header id="head">
+      <svg class="mark" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4.1 5.2 L23.6 4.7" stroke-width="1.05" stroke-dasharray="2.2 1.55"/>
+        <path d="M24.05 5.15 L24.4 22.9" stroke-width="1.05" stroke-dasharray="2.15 1.6"/>
+        <path d="M23.7 23.55 L4.4 23.9" stroke-width="1.05" stroke-dasharray="2.25 1.5"/>
+        <path d="M3.85 23.2 L3.55 5.6" stroke-width="1.05" stroke-dasharray="2.1 1.65"/>
+        <path d="M13.7 4.4 L14.15 1.15 L15.55 3.55" stroke-width="1.1"/>
+        <path d="M8.2 16.4 C11.4 14.1 16.2 14 19.6 16.1" stroke-width=".9"/>
+        <path d="M9.1 18.6 C12 16.7 16.4 16.6 19 18.4" stroke-width=".85"/>
+      </svg>
+      <div id="title">Yard Draft</div>
+    </header>
+    <nav id="tools">
+      <button type="button" class="tool on" data-mode="topo">
+        <svg class="chip" viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
+          <line class="ink" x1="4.04" y1="36.96" x2="3.40" y2="34.48" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="7.39" y1="35.47" x2="6.43" y2="32.78" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="10.08" y1="33.47" x2="9.71" y2="31.89" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="13.10" y1="32.39" x2="12.22" y2="30.78" fill="none" stroke-width="1.2" stroke-linecap="round"/>
+          <line class="ink" x1="15.07" y1="32.43" x2="15.01" y2="29.58" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="18.37" y1="31.60" x2="18.33" y2="28.99" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="19.83" y1="31.20" x2="19.96" y2="28.77" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="sap" x1="23.21" y1="31.06" x2="22.90" y2="28.47" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="26.00" y1="32.08" x2="27.63" y2="28.79" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="ink" x1="29.73" y1="32.35" x2="30.51" y2="30.44" fill="none" stroke-width="1.2" stroke-linecap="round"/>
+          <line class="sap" x1="30.44" y1="33.08" x2="32.01" y2="31.18" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="33.68" y1="34.65" x2="34.08" y2="32.06" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="36.19" y1="36.06" x2="37.95" y2="33.75" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="39.64" y1="37.33" x2="40.24" y2="35.57" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="sap" x1="7.23" y1="31.65" x2="5.04" y2="29.60" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="8.23" y1="31.10" x2="7.02" y2="28.41" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="12.38" y1="28.49" x2="11.53" y2="26.69" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="sap" x1="14.44" y1="27.93" x2="14.21" y2="25.66" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="16.44" y1="27.32" x2="15.59" y2="25.40" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="sap" x1="20.12" y1="26.65" x2="19.72" y2="24.74" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="23.14" y1="26.92" x2="22.48" y2="23.95" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="24.99" y1="27.34" x2="25.87" y2="24.10" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="sap" x1="28.21" y1="27.82" x2="29.23" y2="25.74" fill="none" stroke-width="1.2" stroke-linecap="round"/>
+          <line class="ink" x1="30.00" y1="28.44" x2="31.26" y2="25.94" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="sap" x1="33.63" y1="30.02" x2="34.95" y2="28.08" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="ink" x1="35.73" y1="31.17" x2="36.61" y2="29.60" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="38.14" y1="33.83" x2="40.28" y2="31.28" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="ink" x1="8.12" y1="26.64" x2="6.98" y2="25.35" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="sap" x1="9.88" y1="25.68" x2="8.39" y2="23.66" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="ink" x1="12.84" y1="24.20" x2="12.25" y2="21.65" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="ink" x1="14.22" y1="23.33" x2="13.88" y2="21.62" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="16.89" y1="23.18" x2="16.57" y2="20.16" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="19.19" y1="22.30" x2="18.37" y2="19.70" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="sap" x1="20.77" y1="22.21" x2="21.95" y2="19.13" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="sap" x1="25.17" y1="22.54" x2="26.05" y2="20.26" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="27.09" y1="23.32" x2="28.04" y2="20.37" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="29.56" y1="23.86" x2="30.49" y2="21.73" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="sap" x1="31.18" y1="24.94" x2="32.80" y2="22.88" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="33.92" y1="25.89" x2="35.01" y2="23.74" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="10.44" y1="22.46" x2="9.28" y2="19.46" fill="none" stroke-width="1.2" stroke-linecap="round"/>
+          <line class="ink" x1="11.66" y1="21.15" x2="10.59" y2="18.34" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="sap" x1="15.12" y1="19.41" x2="13.37" y2="16.99" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="ink" x1="17.03" y1="17.89" x2="16.52" y2="15.74" fill="none" stroke-width="1.2" stroke-linecap="round"/>
+          <line class="ink" x1="18.81" y1="17.42" x2="17.98" y2="15.45" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="21.93" y1="17.22" x2="22.71" y2="14.11" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="24.81" y1="17.41" x2="25.00" y2="15.38" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="26.37" y1="18.32" x2="27.33" y2="15.94" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="ink" x1="28.24" y1="18.64" x2="29.80" y2="17.10" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="sap" x1="30.66" y1="20.78" x2="32.15" y2="17.89" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="sap" x1="34.14" y1="22.19" x2="34.55" y2="20.10" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="12.18" y1="16.80" x2="10.54" y2="14.94" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="14.29" y1="14.61" x2="13.94" y2="13.36" fill="none" stroke-width="1.2" stroke-linecap="round"/>
+          <line class="ink" x1="16.16" y1="14.56" x2="15.14" y2="11.79" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="ink" x1="19.60" y1="13.12" x2="18.06" y2="10.90" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="sap" x1="21.27" y1="12.70" x2="20.24" y2="10.82" fill="none" stroke-width="1.12" stroke-linecap="round"/>
+          <line class="ink" x1="23.38" y1="12.98" x2="22.73" y2="10.50" fill="none" stroke-width="1.05" stroke-linecap="round"/>
+          <line class="sap" x1="25.53" y1="13.51" x2="26.17" y2="11.61" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="27.36" y1="14.78" x2="28.81" y2="12.67" fill="none" stroke-width="1.28" stroke-linecap="round"/>
+          <line class="ink" x1="29.69" y1="15.72" x2="30.43" y2="14.06" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="12.02" y1="17.86" x2="11.05" y2="18.85" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="ink" x1="13.75" y1="15.79" x2="12.89" y2="15.85" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="34.26" y1="19.26" x2="33.33" y2="19.83" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="sap" x1="34.93" y1="13.26" x2="34.99" y2="13.93" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+          <line class="ink" x1="10.89" y1="15.19" x2="10.82" y2="16.43" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="11.29" y1="28.29" x2="10.48" y2="29.27" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+          <line class="ink" x1="32.49" y1="18.61" x2="32.38" y2="19.20" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="sap" x1="24.56" y1="24.68" x2="24.02" y2="24.98" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="ink" x1="25.56" y1="22.89" x2="25.81" y2="23.85" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="26.03" y1="34.62" x2="26.02" y2="35.64" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="sap" x1="33.24" y1="15.09" x2="33.02" y2="16.27" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+          <line class="sap" x1="29.41" y1="21.02" x2="28.67" y2="21.44" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+          <line class="ink" x1="10.88" y1="25.03" x2="11.50" y2="25.05" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+          <line class="ink" x1="8.16" y1="35.15" x2="8.79" y2="36.01" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="sap" x1="8.85" y1="25.71" x2="8.53" y2="26.52" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="sap" x1="20.85" y1="18.46" x2="21.89" y2="19.04" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="sap" x1="12.92" y1="18.54" x2="12.63" y2="19.53" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="ink" x1="30.29" y1="18.71" x2="29.71" y2="19.73" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+        </svg>
+        <span class="meta">
+          <span class="name">Terrain</span>
+        </span>
+        <span class="k">T</span>
+      </button>
+      <button type="button" class="tool" data-mode="water">
+        <svg class="chip" viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
+          <polygon class="pool" points="4.41,23.68 9.22,25.83 14.73,25.18 21.24,22.88 27.15,21.09 33.60,20.05 39.07,18.92 39.97,21.62 34.01,23.43 27.58,24.68 20.71,27.00 14.42,28.39 7.98,28.11 3.59,26.24" fill-opacity="0.14"/>
+          <polyline class="rill" points="1.74,24.80 5.78,26.74 11.28,28.04 15.64,26.95 19.39,24.36 23.98,22.88 29.04,21.01 33.74,20.88 38.45,18.82 43.04,17.96" fill="none" stroke-width="1.05" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.2 2.4 1.3 2.8 3.1 2.2 1.6 3.0 2.6 2.5 1.8 2.7"/>
+          <polyline class="rill" points="2.71,27.63 7.23,29.00 11.63,28.95 16.18,27.81 21.04,25.30 25.80,23.38 30.20,22.19 34.87,22.04 39.06,20.84" fill="none" stroke-width="0.85" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1.6 2.6 2.4 3.1 1.2 2.8 2.0 2.4 1.5 3.2"/>
+          <line class="rill" x1="6.27" y1="26.43" x2="4.50" y2="28.41" fill="none" stroke-width="0.75" stroke-linecap="round"/>
+          <line class="rill" x1="10.80" y1="25.73" x2="10.83" y2="28.17" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="rill" x1="15.52" y1="26.08" x2="15.38" y2="28.83" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="rill" x1="17.97" y1="22.06" x2="19.49" y2="24.48" fill="none" stroke-width="0.82" stroke-linecap="round"/>
+          <line class="rill" x1="23.54" y1="22.33" x2="25.33" y2="24.72" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="rill" x1="27.38" y1="19.46" x2="29.09" y2="21.80" fill="none" stroke-width="0.75" stroke-linecap="round"/>
+          <line class="rill" x1="32.88" y1="21.37" x2="33.38" y2="23.21" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="rill" x1="36.88" y1="17.27" x2="37.09" y2="19.77" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="rill" x1="40.39" y1="17.88" x2="40.73" y2="20.80" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+        </svg>
+        <span class="meta">
+          <span class="name">Water</span>
+        </span>
+        <span class="k">W</span>
+      </button>
+      <button type="button" class="tool" data-mode="plant">
+        <svg class="chip" viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
+          <ellipse class="olive" cx="24.57" cy="15.51" rx="1.38" ry="0.78" transform="rotate(19.25 24.57 15.51)" style="stroke:none"/>
+          <circle class="olive" cx="20.55" cy="25.87" r="1.59" style="stroke:none"/>
+          <ellipse class="olive" cx="13.34" cy="18.63" rx="1.00" ry="0.56" transform="rotate(-45.48 13.34 18.63)" style="stroke:none"/>
+          <circle class="olive" cx="21.00" cy="20.95" r="1.25" style="stroke:none"/>
+          <circle class="olive" cx="25.17" cy="19.08" r="1.38" style="stroke:none"/>
+          <ellipse class="olive" cx="26.40" cy="22.21" rx="0.65" ry="0.28" transform="rotate(13.03 26.40 22.21)" style="stroke:none"/>
+          <circle class="olive" cx="19.57" cy="26.24" r="1.48" style="stroke:none"/>
+          <circle class="olive" cx="22.55" cy="20.87" r="1.28" style="stroke:none"/>
+          <circle class="olive" cx="18.42" cy="23.02" r="1.10" style="stroke:none"/>
+          <ellipse class="olive" cx="14.52" cy="19.01" rx="1.14" ry="0.81" transform="rotate(53.13 14.52 19.01)" style="stroke:none"/>
+          <circle class="olive" cx="16.44" cy="21.88" r="1.44" style="stroke:none"/>
+          <ellipse class="olive" cx="16.34" cy="20.42" rx="0.46" ry="0.25" transform="rotate(-7.06 16.34 20.42)" style="stroke:none"/>
+          <circle class="olive" cx="17.49" cy="21.37" r="1.08" style="stroke:none"/>
+          <circle class="olive" cx="26.90" cy="25.20" r="1.52" style="stroke:none"/>
+          <circle class="olive" cx="16.87" cy="13.76" r="1.55" style="stroke:none"/>
+          <circle class="olive" cx="22.89" cy="15.52" r="0.65" style="stroke:none"/>
+          <circle class="olive" cx="23.94" cy="27.55" r="1.35" style="stroke:none"/>
+          <circle class="olive" cx="20.75" cy="21.34" r="0.91" style="stroke:none"/>
+          <ellipse class="olive" cx="24.16" cy="21.39" rx="1.12" ry="0.75" transform="rotate(22.74 24.16 21.39)" style="stroke:none"/>
+          <circle class="olive" cx="17.97" cy="16.80" r="1.26" style="stroke:none"/>
+          <circle class="olive" cx="19.94" cy="25.37" r="1.03" style="stroke:none"/>
+          <ellipse class="olive" cx="20.22" cy="18.81" rx="0.55" ry="0.41" transform="rotate(-3.30 20.22 18.81)" style="stroke:none"/>
+          <ellipse class="olive" cx="19.42" cy="18.76" rx="0.88" ry="0.37" transform="rotate(-24.36 19.42 18.76)" style="stroke:none"/>
+          <circle class="olive" cx="22.83" cy="14.32" r="1.55" style="stroke:none"/>
+          <circle class="olive" cx="18.78" cy="21.43" r="0.74" style="stroke:none"/>
+          <circle class="olive" cx="21.88" cy="15.08" r="1.46" style="stroke:none"/>
+          <circle class="olive" cx="20.10" cy="24.29" r="1.48" style="stroke:none"/>
+          <circle class="olive" cx="23.42" cy="15.26" r="1.35" style="stroke:none"/>
+          <circle class="olive" cx="29.05" cy="16.17" r="1.03" style="stroke:none"/>
+          <ellipse class="olive" cx="28.01" cy="16.92" rx="0.88" ry="0.63" transform="rotate(-36.86 28.01 16.92)" style="stroke:none"/>
+          <ellipse class="olive" cx="22.68" cy="20.68" rx="1.36" ry="0.99" transform="rotate(47.91 22.68 20.68)" style="stroke:none"/>
+          <circle class="olive" cx="22.96" cy="20.38" r="1.35" style="stroke:none"/>
+          <circle class="olive" cx="21.29" cy="20.85" r="1.18" style="stroke:none"/>
+          <ellipse class="olive" cx="28.12" cy="21.50" rx="1.55" ry="1.03" transform="rotate(-20.58 28.12 21.50)" style="stroke:none"/>
+          <circle class="olive" cx="26.84" cy="14.90" r="0.56" style="stroke:none"/>
+          <circle class="olive" cx="24.34" cy="16.61" r="0.61" style="stroke:none"/>
+          <ellipse class="olive" cx="20.94" cy="18.40" rx="0.49" ry="0.27" transform="rotate(16.73 20.94 18.40)" style="stroke:none"/>
+          <circle class="olive" cx="28.11" cy="16.65" r="0.67" style="stroke:none"/>
+          <circle class="olive" cx="30.93" cy="18.02" r="0.85" style="stroke:none"/>
+          <ellipse class="olive" cx="30.16" cy="21.59" rx="1.21" ry="0.74" transform="rotate(-17.11 30.16 21.59)" style="stroke:none"/>
+          <circle class="olive" cx="29.88" cy="15.66" r="0.65" style="stroke:none"/>
+          <circle class="olive" cx="21.10" cy="20.01" r="1.20" style="stroke:none"/>
+          <circle class="olive" cx="29.46" cy="18.94" r="0.80" style="stroke:none"/>
+          <ellipse class="olive" cx="23.07" cy="18.36" rx="0.86" ry="0.51" transform="rotate(-5.00 23.07 18.36)" style="stroke:none"/>
+          <ellipse class="olive" cx="21.41" cy="20.65" rx="0.67" ry="0.31" transform="rotate(34.13 21.41 20.65)" style="stroke:none"/>
+          <circle class="olive" cx="28.52" cy="14.63" r="0.89" style="stroke:none"/>
+          <ellipse class="olive" cx="28.82" cy="21.66" rx="0.79" ry="0.48" transform="rotate(8.03 28.82 21.66)" style="stroke:none"/>
+          <circle class="olive" cx="22.09" cy="23.20" r="1.56" style="stroke:none"/>
+          <circle class="olive" cx="27.30" cy="18.27" r="1.19" style="stroke:none"/>
+          <ellipse class="olive" cx="22.19" cy="13.99" rx="0.56" ry="0.30" transform="rotate(28.38 22.19 13.99)" style="stroke:none"/>
+          <circle class="olive" cx="20.06" cy="28.10" r="0.46" style="stroke:none"/>
+          <ellipse class="olive" cx="13.38" cy="22.02" rx="0.91" ry="0.63" transform="rotate(-14.21 13.38 22.02)" style="stroke:none"/>
+          <ellipse class="olive" cx="22.09" cy="23.52" rx="0.95" ry="0.55" transform="rotate(-36.47 22.09 23.52)" style="stroke:none"/>
+          <circle class="olive" cx="21.61" cy="22.83" r="1.46" style="stroke:none"/>
+          <ellipse class="olive" cx="14.29" cy="27.72" rx="0.65" ry="0.37" transform="rotate(27.76 14.29 27.72)" style="stroke:none"/>
+          <circle class="olive" cx="14.42" cy="20.93" r="0.43" style="stroke:none"/>
+          <circle class="olive" cx="17.86" cy="23.74" r="0.45" style="stroke:none"/>
+          <circle class="olive" cx="22.45" cy="28.75" r="1.36" style="stroke:none"/>
+          <circle class="olive" cx="23.46" cy="27.86" r="0.93" style="stroke:none"/>
+          <circle class="olive" cx="21.19" cy="26.79" r="1.31" style="stroke:none"/>
+          <circle class="olive" cx="24.98" cy="26.67" r="0.97" style="stroke:none"/>
+          <circle class="olive" cx="19.99" cy="20.90" r="0.40" style="stroke:none"/>
+          <ellipse class="olive" cx="18.36" cy="24.21" rx="0.82" ry="0.40" transform="rotate(30.93 18.36 24.21)" style="stroke:none"/>
+          <circle class="olive" cx="16.74" cy="19.44" r="1.36" style="stroke:none"/>
+          <circle class="olive" cx="12.72" cy="22.08" r="0.67" style="stroke:none"/>
+          <circle class="olive" cx="22.01" cy="26.04" r="0.94" style="stroke:none"/>
+          <ellipse class="olive" cx="18.66" cy="23.44" rx="0.79" ry="0.39" transform="rotate(-44.11 18.66 23.44)" style="stroke:none"/>
+          <ellipse class="olive" cx="23.32" cy="20.36" rx="0.70" ry="0.50" transform="rotate(5.85 23.32 20.36)" style="stroke:none"/>
+          <circle class="olive" cx="16.44" cy="19.82" r="0.75" style="stroke:none"/>
+          <circle class="olive" cx="18.00" cy="18.81" r="1.07" style="stroke:none"/>
+          <circle class="olive" cx="22.35" cy="26.50" r="1.57" style="stroke:none"/>
+          <ellipse class="olive" cx="21.69" cy="24.26" rx="1.11" ry="0.80" transform="rotate(50.32 21.69 24.26)" style="stroke:none"/>
+          <circle class="olive" cx="25.36" cy="26.02" r="1.56" style="stroke:none"/>
+          <ellipse class="olive" cx="28.60" cy="22.58" rx="0.44" ry="0.19" transform="rotate(52.37 28.60 22.58)" style="stroke:none"/>
+          <circle class="olive" cx="21.51" cy="23.76" r="0.69" style="stroke:none"/>
+          <ellipse class="olive" cx="22.42" cy="26.54" rx="1.13" ry="0.56" transform="rotate(-33.70 22.42 26.54)" style="stroke:none"/>
+          <circle class="ink" cx="14.75" cy="19.05" r="0.35" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="18.30" cy="31.16" r="0.49" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="32.74" cy="25.32" r="0.64" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="11.75" cy="16.15" r="0.43" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="14.66" cy="31.16" r="0.40" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="25.69" cy="17.49" r="0.46" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="14.59" cy="31.93" r="0.41" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="21.05" cy="21.93" r="0.45" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="12.24" cy="21.11" r="0.57" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="17.92" cy="16.74" r="0.56" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <circle class="ink" cx="28.74" cy="12.53" r="0.66" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+        </svg>
+        <span class="meta">
+          <span class="name">Planting</span>
+        </span>
+        <span class="k">P</span>
+      </button>
+      <button type="button" class="tool" data-mode="path">
+        <svg class="chip" viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
+          <polygon class="terra" points="1.80,26.69 7.44,27.85 13.86,27.57 19.61,26.08 24.35,24.47 29.31,24.39 33.59,25.78 38.74,27.34 42.55,17.31 36.80,14.94 30.03,13.92 23.09,13.71 17.55,15.92 11.99,17.18 8.38,17.22 2.92,16.30" fill-opacity="0.35" stroke="none"/>
+          <polyline class="ink" points="1.80,26.69 3.41,27.08 5.23,27.61 7.44,27.85 9.37,27.57 11.41,27.62 13.86,27.57 15.68,27.30 17.68,26.79 19.61,26.08 21.32,25.75 22.60,25.27 24.35,24.47 25.92,24.25 27.48,24.33 29.31,24.39 31.08,25.03 32.23,25.24 33.59,25.78 35.18,26.61 37.23,27.03 38.74,27.34" fill="none" stroke-width="1.18" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline class="ink" points="2.92,16.30 4.63,16.36 6.29,17.18 8.38,17.22 9.81,17.29 10.83,17.24 11.99,17.18 14.18,16.51 15.78,16.11 17.55,15.92 19.33,15.28 21.36,14.51 23.09,13.71 25.32,13.69 27.76,14.00 30.03,13.92 32.55,14.26 34.68,14.61 36.80,14.94 38.51,15.67 40.36,16.77 42.55,17.31" fill="none" stroke-width="1.12" stroke-linecap="round" stroke-linejoin="round"/>
+          <line class="ink" x1="4.40" y1="27.22" x2="4.25" y2="28.73" fill="none" stroke-width="1.0" stroke-linecap="round"/>
+          <line class="ink" x1="8.87" y1="27.78" x2="8.59" y2="29.28" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="15.02" y1="27.27" x2="15.61" y2="28.59" fill="none" stroke-width="1.15" stroke-linecap="round"/>
+          <line class="ink" x1="19.13" y1="26.20" x2="19.68" y2="28.06" fill="none" stroke-width="1.08" stroke-linecap="round"/>
+          <line class="ink" x1="24.86" y1="24.46" x2="24.83" y2="25.71" fill="none" stroke-width="1.15" stroke-linecap="round"/>
+          <line class="ink" x1="30.07" y1="24.63" x2="29.43" y2="26.22" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="35.74" y1="26.43" x2="35.42" y2="28.11" fill="none" stroke-width="1.15" stroke-linecap="round"/>
+          <line class="ink" x1="5.74" y1="16.77" x2="5.01" y2="18.54" fill="none" stroke-width="1.08" stroke-linecap="round"/>
+          <line class="ink" x1="10.31" y1="17.20" x2="10.50" y2="18.56" fill="none" stroke-width="1.08" stroke-linecap="round"/>
+          <line class="ink" x1="16.35" y1="16.19" x2="16.84" y2="17.57" fill="none" stroke-width="1.08" stroke-linecap="round"/>
+          <line class="ink" x1="21.32" y1="14.42" x2="22.07" y2="16.35" fill="none" stroke-width="1.0" stroke-linecap="round"/>
+          <line class="ink" x1="28.17" y1="13.86" x2="27.76" y2="15.95" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="34.11" y1="14.53" x2="33.72" y2="15.89" fill="none" stroke-width="1.0" stroke-linecap="round"/>
+          <line class="ink" x1="39.43" y1="16.02" x2="38.78" y2="17.64" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+        </svg>
+        <span class="meta">
+          <span class="name">Path</span>
+        </span>
+        <span class="k">R</span>
+      </button>
+      <button type="button" class="tool" data-mode="wall">
+        <svg class="chip" viewBox="0 0 44 44" width="40" height="40" aria-hidden="true">
+          <polyline class="ink" points="3.2,16.8 5.1,17.4 7.6,16.9 10.2,17.6 12.8,17.1 15.4,17.8 18.0,17.2 20.6,17.9 23.1,17.0 25.8,17.7 28.4,17.3 31.0,18.0 33.6,17.2 36.2,17.8 39.0,17.1 41.2,17.6" fill="none" stroke-width="1.18" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline class="ink" points="8.4,16.6 10.0,16.1" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <polyline class="ink" points="22.0,16.4 24.2,16.0" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <polyline class="ink" points="34.8,16.5 36.6,16.0" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <polyline class="ink" points="3.4,26.4 5.6,27.1 8.0,26.5 10.7,27.2 13.2,26.6 15.9,27.3 18.4,26.7 21.1,27.4 23.6,26.6 26.4,27.2 28.9,26.8 31.6,27.5 34.2,26.7 36.8,27.3 39.4,26.6 41.4,27.0" fill="none" stroke-width="1.12" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline class="ink" points="12.2,27.6 14.0,28.1" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <polyline class="ink" points="27.4,27.8 29.6,28.2" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="6.4" y1="15.6" x2="6.9" y2="18.6" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="11.8" y1="16.2" x2="11.2" y2="18.9" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="17.6" y1="15.8" x2="18.2" y2="19.0" fill="none" stroke-width="1.0" stroke-linecap="round"/>
+          <line class="ink" x1="24.8" y1="16.0" x2="24.2" y2="18.8" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="32.2" y1="16.4" x2="32.8" y2="19.1" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="38.4" y1="15.9" x2="37.8" y2="18.7" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="5.2" y1="24.8" x2="5.7" y2="27.8" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="10.4" y1="25.2" x2="9.8" y2="28.0" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="16.6" y1="24.6" x2="17.1" y2="28.1" fill="none" stroke-width="1.0" stroke-linecap="round"/>
+          <line class="ink" x1="22.8" y1="25.0" x2="22.2" y2="27.9" fill="none" stroke-width="0.9" stroke-linecap="round"/>
+          <line class="ink" x1="29.6" y1="25.1" x2="30.2" y2="28.2" fill="none" stroke-width="0.95" stroke-linecap="round"/>
+          <line class="ink" x1="35.8" y1="24.7" x2="35.2" y2="27.8" fill="none" stroke-width="0.85" stroke-linecap="round"/>
+          <line class="ink" x1="40.2" y1="25.3" x2="40.6" y2="27.6" fill="none" stroke-width="0.8" stroke-linecap="round"/>
+          <line class="ink" x1="14.6" y1="19.6" x2="15.1" y2="20.4" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="ink" x1="26.4" y1="23.8" x2="25.8" y2="24.6" fill="none" stroke-width="0.7" stroke-linecap="round"/>
+          <line class="ink" x1="33.6" y1="21.2" x2="34.2" y2="22.0" fill="none" stroke-width="0.65" stroke-linecap="round"/>
+        </svg>
+        <span class="meta">
+          <span class="name">Wall</span>
+        </span>
+        <span class="k">L</span>
+      </button>
+    </nav>
+    <div id="foot">
+      <nav id="actions">
+        <button type="button" data-act="undo">Undo<span class="k">z</span></button>
+        <button type="button" data-act="clear">Clear<span class="k">c</span></button>
+        <button type="button" data-act="dark">Tone<span class="k">d</span></button>
+        <button type="button" data-act="export">Take the sheet<span class="k">e</span></button>
+      </nav>
+    </div>
+  </div>
+  <script>
+    const LIGHT = {
+      paper: "#efe6d0",
+      ink: "#2c281f",
+      olive: "#55613a",
+      sap: "#6a7a3d",
+      sapDeep: "#3f4a28",
+      terracotta: "#b56848",
+      terraDeep: "#8f4e38",
+      water: "#6e7f86",
+      waterDeep: "#55656c",
+      pave: "#d4c6ac",
+      tray: "#FFFFFF",
+      vellum: "#E8CC6A"
+    };
+    const DARK = {
+      paper: "#1A1A1A",
+      ink: "#efe6d0",
+      olive: "#8a9a5c",
+      sap: "#9aaa62",
+      sapDeep: "#6d7c48",
+      terracotta: "#d08a6a",
+      terraDeep: "#c07a58",
+      water: "#8a9ba2",
+      waterDeep: "#708088",
+      pave: "#3d382c",
+      tray: "#111111",
+      vellum: "#C9A63A"
+    };
+
+    let mode = "topo";
+    let dark = false;
+    let passSeed = 1400;
+    let analogDirty = true;
+    let brushesScaled = false;
+    let B = {};
+    let lot = {};
+    let gestures = [];
+    let livePts = null;
+    let strokeLock = false;
+    let liveT0 = 0;
+    let drawing = false;
+    let suppressExport = false;
+    let hasPtr = false;
+    let seedSeq = 1;
+    let settleTimer = null;
+    let tokenTimer = null;
+    let lastDragDraw = 0;
+    let vellumKey = false;
+    let deskLift = false;
+    const SETTLE_MS = 320;
+    const DOCK_W = 232;
+
+    function overSheet(x, y) {
+      if (x == null || y == null) {
+        x = mouseX;
+        y = mouseY;
+      }
+      return x >= DOCK_W && x <= width && y >= 0 && y <= height;
+    }
+
+    function inLot(x, y) {
+      if (x == null || y == null) {
+        x = mouseX;
+        y = mouseY;
+      }
+      return x >= lot.x && x <= lot.x + lot.w && y >= lot.y && y <= lot.y + lot.h;
+    }
+
+    function onDesk(x, y) {
+      return overSheet(x, y) && !inLot(x, y);
+    }
+
+    function vellumLifted() {
+      return !drawing && (vellumKey || deskLift);
+    }
+
+    function stampHand(g, raw, closed) {
+      const src = (raw && raw.length) ? raw.map(function (pt) { return [pt[0], pt[1]]; }) : [];
+      if (src.length === 1) src.push([src[0][0] + 0.4, src[0][1] + 8]);
+      g.handSrc = src;
+      g.handClosed = !!closed;
+      g.hand = src.length >= 2 ? analogize(src.map(function (pt) { return [pt[0], pt[1]]; }), 0.4, 1, g.handClosed) : src;
+    }
+
+    function refreshHands() {
+      for (let i = 0; i < gestures.length; i++) {
+        const g = gestures[i];
+        if (!g.handSrc || g.handSrc.length < 2) continue;
+        g.hand = analogize(g.handSrc.map(function (pt) { return [pt[0], pt[1]]; }), 0.4, 1, !!g.handClosed);
+      }
+    }
+
+    function drawHandLayer(g) {
+      const pts = g.hand;
+      if (!pts || pts.length < 2) return;
+      resetBrush();
+      analogTooth();
+      brush.noFill();
+      brush.noHatch();
+      brush.set(random() > 0.5 ? B.H2 : B.charcoal, pal("ink"), random(0.30, 0.42));
+      shape(pts, !!g.handClosed, 0.08);
+      brush.noField();
+    }
+
+    function canvasXY(evt) {
+      if (evt && evt.clientX != null) {
+        const cnv = (typeof canvas !== "undefined" && canvas && canvas.elt) ? canvas.elt : document.querySelector("canvas");
+        if (cnv) {
+          const r = cnv.getBoundingClientRect();
+          const sx = r.width ? width / r.width : 1;
+          const sy = r.height ? height / r.height : 1;
+          return [(evt.clientX - r.left) * sx, (evt.clientY - r.top) * sy];
+        }
+        return [evt.clientX, evt.clientY];
+      }
+      return [mouseX, mouseY];
+    }
+
+    function pal(k) {
+      return (dark ? DARK : LIGHT)[k];
+    }
+
+    function hash(s) {
+      let h = 2166136261;
+      const str = String(s);
+      for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0) / 4294967296;
+    }
+
+    function nextSeed() {
+      seedSeq += 1;
+      return ((hash(seedSeq + ":" + passSeed) * 2147483647) | 0) || seedSeq;
+    }
+
+    function inPoly(x, y, pts) {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const xi = pts[i][0], yi = pts[i][1];
+        const xj = pts[j][0], yj = pts[j][1];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+
+    function chaikin(pts, rounds, closed) {
+      let p = pts;
+      for (let r = 0; r < rounds; r++) {
+        const n = [];
+        const last = closed ? p.length : p.length - 1;
+        if (!closed) n.push(p[0]);
+        for (let i = 0; i < last; i++) {
+          const a = p[i];
+          const b = p[(i + 1) % p.length];
+          n.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+          n.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+        }
+        if (!closed) n.push(p[p.length - 1]);
+        p = n;
+      }
+      return p;
+    }
+
+    function blob(cx, cy, rx, ry, n) {
+      const pts = [];
+      const count = n || 8;
+      const rot = random(-18, 18);
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * 360 + rot;
+        const k = 0.82 + noise(i * 0.37, passSeed * 0.02) * 0.34;
+        pts.push([cx + cos(a) * rx * k, cy + sin(a) * ry * k]);
+      }
+      return pts;
+    }
+
+    function dashPath(pts, dashLen, gapLen) {
+      if (!pts || pts.length < 2) return;
+      let remain = dashLen;
+      let drawingDash = true;
+      for (let i = 0; i < pts.length - 1; i++) {
+        let x0 = pts[i][0], y0 = pts[i][1];
+        const x1 = pts[i + 1][0], y1 = pts[i + 1][1];
+        let seg = dist(x0, y0, x1, y1);
+        if (seg < 0.5) continue;
+        const ux = (x1 - x0) / seg;
+        const uy = (y1 - y0) / seg;
+        while (seg > 0.4) {
+          const step = Math.min(seg, remain);
+          const nx = x0 + ux * step;
+          const ny = y0 + uy * step;
+          if (drawingDash) brush.line(x0, y0, nx, ny);
+          x0 = nx;
+          y0 = ny;
+          seg -= step;
+          remain -= step;
+          if (remain <= 0) {
+            drawingDash = !drawingDash;
+            remain = drawingDash ? dashLen : gapLen;
+          }
+        }
+      }
+    }
+
+    function resetBrush() {
+      brush.noFill();
+      brush.noWash();
+      brush.noHatch();
+      brush.noMass();
+      brush.noStroke();
+      brush.noField();
+      brush.noClip();
+    }
+
+    function shape(pts, closed, curve) {
+      if (!pts || pts.length < 2) return;
+      if (!closed) {
+        for (let i = 1; i < pts.length; i++) {
+          brush.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+        }
+        return;
+      }
+      brush.beginShape(curve == null ? 0.32 : curve);
+      for (let i = 0; i < pts.length; i++) brush.vertex(pts[i][0], pts[i][1]);
+      brush.endShape(true);
+    }
+
+    function pickBrush(box, names) {
+      for (let i = 0; i < names.length; i++) {
+        if (box.indexOf(names[i]) !== -1) return names[i];
+      }
+      return box[0];
+    }
+
+    function ribbonEdge(center, halfW, closed) {
+      const e = [];
+      const n = center.length;
+      for (let i = 0; i < n; i++) {
+        const prev = closed ? center[(i + n - 1) % n] : center[Math.max(0, i - 1)];
+        const next = closed ? center[(i + 1) % n] : center[Math.min(n - 1, i + 1)];
+        const dx = next[0] - prev[0];
+        const dy = next[1] - prev[1];
+        const len = Math.hypot(dx, dy) || 1;
+        e.push([center[i][0] + (-dy / len) * halfW, center[i][1] + (dx / len) * halfW]);
+      }
+      return e;
+    }
+
+    // An offset edge folds back on itself wherever the centreline turns tighter
+    // than halfW. Dropping the points that travel against the centreline tangent
+    // collapses that loop into a mitre instead of leaving a crossed knot.
+    function pruneFold(center, edge, closed) {
+      if (!edge || edge.length < 3 || edge.length !== center.length) return edge;
+      const out = [];
+      for (let i = 0; i < edge.length; i++) {
+        const h = headingAt(center, i, closed);
+        const tx = cos(h);
+        const ty = sin(h);
+        if (out.length) {
+          const p = out[out.length - 1];
+          if ((edge[i][0] - p[0]) * tx + (edge[i][1] - p[1]) * ty <= 0) continue;
+        }
+        out.push(edge[i]);
+      }
+      return out.length >= 2 ? out : edge;
+    }
+
+    function offsetEdge(center, halfW, closed) {
+      return pruneFold(center, ribbonEdge(center, halfW, closed), closed);
+    }
+
+    function ribbon(center, halfW, closed) {
+      const L = offsetEdge(center, halfW, closed);
+      const R = offsetEdge(center, -halfW, closed);
+      return L.concat(R.slice().reverse());
+    }
+
+    function forOpenRibbonQuads(center, halfW, fn) {
+      if (!center || center.length < 2) return;
+      let total = 0;
+      for (let j = 1; j < center.length; j++) {
+        total += Math.hypot(center[j][0] - center[j - 1][0], center[j][1] - center[j - 1][1]);
+      }
+      const cap = total * 0.25;
+      for (let i = 0; i < center.length - 1; i++) {
+        const a = center[i];
+        const b = center[i + 1];
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const len = Math.hypot(dx, dy) || 1;
+        if (len > cap) continue;
+        const nx = -dy / len;
+        const ny = dx / len;
+        fn([
+          [a[0] + nx * halfW, a[1] + ny * halfW],
+          [b[0] + nx * halfW, b[1] + ny * halfW],
+          [b[0] - nx * halfW, b[1] - ny * halfW],
+          [a[0] - nx * halfW, a[1] - ny * halfW]
+        ]);
+      }
+    }
+
+    // Adds points along each segment while keeping every original vertex, so a
+    // hard-cornered spine can carry a ribbon without losing its corners.
+    function densify(pts, step, closed) {
+      if (!pts || pts.length < 2) return pts;
+      const out = [];
+      const n = pts.length;
+      const last = closed ? n : n - 1;
+      for (let i = 0; i < last; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % n];
+        const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const k = Math.max(1, Math.round(d / Math.max(1, step)));
+        for (let s = 0; s < k; s++) {
+          const t = s / k;
+          out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        }
+      }
+      if (!closed) out.push([pts[n - 1][0], pts[n - 1][1]]);
+      return out;
+    }
+
+    function nearestIndex(pts, x, y) {
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const d = (pts[i][0] - x) * (pts[i][0] - x) + (pts[i][1] - y) * (pts[i][1] - y);
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+      return best;
+    }
+
+    function jitter(pts, amt) {
+      return pts.map((p) => [p[0] + random(-amt, amt), p[1] + random(-amt, amt)]);
+    }
+
+    function analogize(pts, amt, rounds, closed) {
+      return chaikin(jitter(pts, amt), rounds, closed);
+    }
+
+    function resample(pts, spacing, closed) {
+      if (!pts || pts.length < 2) return pts ? pts.map((p) => [p[0], p[1]]) : [];
+      const src = pts.map((p) => [p[0], p[1]]);
+      if (closed) src.push([pts[0][0], pts[0][1]]);
+      const step = Math.max(1.2, spacing);
+      const out = [[src[0][0], src[0][1]]];
+      let carry = 0;
+      for (let i = 1; i < src.length; i++) {
+        let x0 = src[i - 1][0];
+        let y0 = src[i - 1][1];
+        const x1 = src[i][0];
+        const y1 = src[i][1];
+        let remaining = Math.hypot(x1 - x0, y1 - y0);
+        if (remaining < 1e-6) continue;
+        const ux = (x1 - x0) / remaining;
+        const uy = (y1 - y0) / remaining;
+        const need = step - carry;
+        if (remaining < need) {
+          carry += remaining;
+          continue;
+        }
+        x0 += ux * need;
+        y0 += uy * need;
+        remaining -= need;
+        out.push([x0, y0]);
+        while (remaining >= step) {
+          x0 += ux * step;
+          y0 += uy * step;
+          remaining -= step;
+          out.push([x0, y0]);
+        }
+        carry = remaining;
+      }
+      if (!closed) {
+        const last = src[src.length - 1];
+        const prev = out[out.length - 1];
+        if (Math.hypot(last[0] - prev[0], last[1] - prev[1]) > step * 0.28) {
+          out.push([last[0], last[1]]);
+        }
+      } else if (out.length > 1) {
+        const prev = out[out.length - 1];
+        if (Math.hypot(prev[0] - out[0][0], prev[1] - out[0][1]) < step * 0.4) out.pop();
+      }
+      return out;
+    }
+
+    function jitterSeeded(pts, amt, seed) {
+      const out = [];
+      for (let i = 0; i < pts.length; i++) {
+        const u = hash(seed + ":x:" + i) * 2 - 1;
+        const v = hash(seed + ":y:" + i) * 2 - 1;
+        out.push([pts[i][0] + u * amt, pts[i][1] + v * amt]);
+      }
+      return out;
+    }
+
+    function stripClosedDup(pts) {
+      if (!pts || pts.length < 3) return pts;
+      const a = pts[0];
+      const b = pts[pts.length - 1];
+      if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 8) return pts.slice(0, -1);
+      return pts;
+    }
+
+    function beautify(pts, opts) {
+      const closed = !!(opts && opts.closed);
+      const rounds = opts && opts.rounds != null ? opts.rounds : (closed ? 3 : 2);
+      const seed = (opts && opts.seed) || 1;
+      const jit = opts && opts.jitter != null ? opts.jitter : 0.5;
+      let p = closed ? stripClosedDup(pts) : pts;
+      p = chaikin(p, rounds, closed);
+      if (opts && opts.step) p = resample(p, opts.step, closed);
+      return jitterSeeded(p, jit, seed);
+    }
+
+    function fittedBasin(pts, seed) {
+      if (isBoxy(pts)) {
+        const bb = bboxOf(pts);
+        const inset = Math.min(bb.w, bb.h) * 0.035 + 2;
+        const rect = [
+          [bb.x + inset, bb.y + inset],
+          [bb.x + bb.w - inset, bb.y + inset],
+          [bb.x + bb.w - inset, bb.y + bb.h - inset],
+          [bb.x + inset, bb.y + bb.h - inset]
+        ];
+        return { pts: jitterSeeded(rect, 1.15, seed), boxy: true };
+      }
+      return { pts: beautify(pts, { closed: true, rounds: 3, jitter: 0.55, seed: seed }), boxy: false };
+    }
+
+    function polyLen(pts) {
+      let L = 0;
+      for (let i = 1; i < pts.length; i++) {
+        L += dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+      }
+      return L;
+    }
+
+    function headingOf(pts) {
+      let sx = 0, sy = 0;
+      for (let i = 1; i < pts.length; i++) {
+        sx += pts[i][0] - pts[i - 1][0];
+        sy += pts[i][1] - pts[i - 1][1];
+      }
+      if (Math.hypot(sx, sy) < 1) {
+        return atan2(pts[pts.length - 1][1] - pts[0][1], pts[pts.length - 1][0] - pts[0][0]);
+      }
+      return atan2(sy, sx);
+    }
+
+    function bboxOf(pts) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        minX = Math.min(minX, pts[i][0]);
+        minY = Math.min(minY, pts[i][1]);
+        maxX = Math.max(maxX, pts[i][0]);
+        maxY = Math.max(maxY, pts[i][1]);
+      }
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    }
+
+    function shoelace(pts) {
+      let a = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const j = (i + 1) % pts.length;
+        a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+      }
+      return a / 2;
+    }
+
+    // How many of the bounding box's four sides the stroke actually runs along.
+    // An L covers two, a U three, a closed rectangle four.
+    function sidesCovered(pts, bb) {
+      const tol = Math.max(6, Math.min(bb.w, bb.h) * 0.16);
+      const sides = [
+        { horiz: true, at: bb.y, span: bb.w },
+        { horiz: true, at: bb.y + bb.h, span: bb.w },
+        { horiz: false, at: bb.x, span: bb.h },
+        { horiz: false, at: bb.x + bb.w, span: bb.h }
+      ];
+      let count = 0;
+      for (let s = 0; s < sides.length; s++) {
+        const side = sides[s];
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          const off = side.horiz ? Math.abs(p[1] - side.at) : Math.abs(p[0] - side.at);
+          if (off > tol) continue;
+          const t = side.horiz ? p[0] : p[1];
+          lo = Math.min(lo, t);
+          hi = Math.max(hi, t);
+        }
+        if (hi - lo > side.span * 0.62) count++;
+      }
+      return count;
+    }
+
+    function isBoxy(pts) {
+      if (!pts || pts.length < 8) return false;
+      const bb = bboxOf(pts);
+      if (bb.w < 16 || bb.h < 16) return false;
+      if (sidesCovered(pts, bb) < 3) return false;
+      const fill = Math.abs(shoelace(pts)) / (bb.w * bb.h);
+      let axis = 0, n = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const dx = Math.abs(pts[i + 1][0] - pts[i][0]);
+        const dy = Math.abs(pts[i + 1][1] - pts[i][1]);
+        const len = Math.hypot(dx, dy);
+        if (len < 6) continue;
+        n++;
+        if (dx < dy * 0.28 || dy < dx * 0.28) axis++;
+      }
+      const axisFrac = n ? axis / n : 0;
+      const thresh = Math.min(bb.w, bb.h) * 0.14;
+      let hug = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        const d = Math.min(p[0] - bb.x, bb.x + bb.w - p[0], p[1] - bb.y, bb.y + bb.h - p[1]);
+        if (d <= thresh) hug++;
+      }
+      const hugFrac = hug / pts.length;
+      return (fill > 0.72 && axisFrac > 0.5) || (hugFrac > 0.7 && axisFrac > 0.55);
+    }
+
+
+    function trimEnds(pts, frac) {
+      if (!pts || pts.length < 2 || !(frac > 0)) return pts;
+      const L = polyLen(pts);
+      const cut = Math.min(L * 0.42, L * frac);
+      if (cut < 1.4 || L - 2 * cut < 6) return pts;
+      function cutFrom(src, amount, reverse) {
+        const p = reverse ? src.slice().reverse() : src;
+        let acc = 0;
+        for (let i = 1; i < p.length; i++) {
+          const d = dist(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]);
+          if (acc + d >= amount) {
+            const t = (amount - acc) / (d || 1);
+            const pt = [p[i - 1][0] + (p[i][0] - p[i - 1][0]) * t, p[i - 1][1] + (p[i][1] - p[i - 1][1]) * t];
+            const rest = p.slice(i);
+            rest.unshift(pt);
+            return reverse ? rest.reverse() : rest;
+          }
+          acc += d;
+        }
+        return src;
+      }
+      return cutFrom(cutFrom(pts, cut, false), cut, true);
+    }
+
+    function downSignOf(pts) {
+      const pos = ribbonEdge(pts, 8);
+      const neg = ribbonEdge(pts, -8);
+      let yp = 0, yn = 0;
+      for (let i = 0; i < pos.length; i++) yp += pos[i][1];
+      for (let i = 0; i < neg.length; i++) yn += neg[i][1];
+      yp /= pos.length || 1;
+      yn /= neg.length || 1;
+      return yp >= yn ? 1 : -1;
+    }
+
+    function insetClosed(pts, d) {
+      if (!pts || pts.length < 3) return pts;
+      let cx = 0, cy = 0;
+      for (let i = 0; i < pts.length; i++) {
+        cx += pts[i][0];
+        cy += pts[i][1];
+      }
+      cx /= pts.length;
+      cy /= pts.length;
+      const out = [];
+      for (let i = 0; i < pts.length; i++) {
+        const dx = cx - pts[i][0];
+        const dy = cy - pts[i][1];
+        const len = Math.hypot(dx, dy) || 1;
+        out.push([pts[i][0] + (dx / len) * d, pts[i][1] + (dy / len) * d]);
+      }
+      return out;
+    }
+
+    function headingAt(pts, i, closed) {
+      const n = pts.length;
+      const prev = closed ? pts[(i + n - 1) % n] : pts[Math.max(0, i - 1)];
+      const next = closed ? pts[(i + 1) % n] : pts[Math.min(n - 1, i + 1)];
+      return atan2(next[1] - prev[1], next[0] - prev[0]);
+    }
+
+    function perpAt(pts, i, closed) {
+      const h = headingAt(pts, i, closed);
+      return [-sin(h), cos(h)];
+    }
+
+    function findCorners(pts, closed) {
+      const corners = [];
+      if (!pts || pts.length < 3) return corners;
+      const n = pts.length;
+      const lim = closed ? n : n - 1;
+      for (let i = closed ? 0 : 1; i < lim; i++) {
+        const p0 = pts[(i + n - 1) % n];
+        const p1 = pts[i];
+        const p2 = pts[(i + 1) % n];
+        const a1 = atan2(p1[1] - p0[1], p1[0] - p0[0]);
+        const a2 = atan2(p2[1] - p1[1], p2[0] - p1[0]);
+        let d = a2 - a1;
+        while (d > 180) d -= 360;
+        while (d < -180) d += 360;
+        if (Math.abs(d) > 38) corners.push({ i: i, x: p1[0], y: p1[1] });
+      }
+      return corners;
+    }
+
+    function squareToBbox(pts, seed) {
+      const bb = bboxOf(pts);
+      const rect = [
+        [bb.x, bb.y],
+        [bb.x + bb.w, bb.y],
+        [bb.x + bb.w, bb.y + bb.h],
+        [bb.x, bb.y + bb.h]
+      ];
+      return jitterSeeded(rect, 0.95, seed);
+    }
+
+    function ellipsePts(cx, cy, rx, ry, n) {
+      const pts = [];
+      const count = n || 10;
+      const rot = random(-8, 8);
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * 360 + rot;
+        pts.push([cx + cos(a) * rx, cy + sin(a) * ry]);
+      }
+      return pts;
+    }
+
+    function plantClumps(spine, halfW, seed) {
+      const samples = resample(spine, Math.max(4, halfW * 1.25), false);
+      const clumps = [];
+      const headOff = Math.floor(hash(seed + ":hoff") * 6);
+      for (let i = 0; i < samples.length; i++) {
+        const nrm = perpAt(samples, i, false);
+        const off = (hash(seed + ":off:" + i) * 2 - 1) * 0.38 * halfW;
+        const x = samples[i][0] + nrm[0] * off;
+        const y = samples[i][1] + nrm[1] * off;
+        // brush.mass() scatters particles by absolute area, so clumps much
+        // under ~12px come out as bare outlines. Keep the floor high enough.
+        let r = (0.74 + hash(seed + ":r:" + i) * 0.5) * halfW;
+        let tree = false;
+        if ((i + headOff) % 6 === 0) {
+          r *= 1.28;
+          tree = true;
+        }
+        clumps.push({ x: x, y: y, r: r, tree: tree });
+      }
+      return clumps;
+    }
+
+    function analogTooth() {
+      brush.wiggle(random(1.6, 2.8));
+    }
+
+    function flashToken(name) {
+      const el = document.getElementById("token");
+      el.textContent = "*" + name;
+      el.classList.remove("on");
+      void el.offsetWidth;
+      el.classList.add("on");
+      if (tokenTimer) clearTimeout(tokenTimer);
+      tokenTimer = setTimeout(function () {
+        el.classList.remove("on");
+      }, 700);
+    }
+
+    function setMode(name) {
+      if (drawing) endStroke();
+      strokeLock = false;
+      mode = name;
+      updateCaption();
+      requestAnalog();
+    }
+
+    function toggleDark() {
+      dark = !dark;
+      document.body.classList.toggle("dark", dark);
+      requestAnalog();
+    }
+
+    function undoLast() {
+      gestures.pop();
+      showEmpty();
+      requestAnalog();
+    }
+
+    function clearGestures() {
+      gestures = [];
+      showEmpty();
+      requestAnalog();
+    }
+
+    function exportSheet() {
+      if (drawing || suppressExport) return;
+      const holdKey = vellumKey;
+      const holdDesk = deskLift;
+      vellumKey = false;
+      deskLift = false;
+      redraw();
+      saveCanvas("yard-draft", "png");
+      vellumKey = holdKey;
+      deskLift = holdDesk;
+      if (vellumLifted()) redraw();
+    }
+
+    function showEmpty() {
+      const el = document.getElementById("empty");
+      el.classList.toggle("off", gestures.length > 0);
+      const prompts = { topo: "Lay a contour", water: "Lay a rill", plant: "Lay a hedge", path: "Lay a walk", wall: "Lay an edge" };
+      const q = el.querySelector(".prompt");
+      if (q) q.textContent = prompts[mode] || prompts.topo;
+    }
+
+    function flashTracing() {}
+
+    function updateCaption() {
+      const tools = document.querySelectorAll("#tools .tool");
+      for (let i = 0; i < tools.length; i++) {
+        tools[i].classList.toggle("on", tools[i].dataset.mode === mode);
+      }
+      showEmpty();
+    }
+
+    function wireHud() {
+      const dock = document.getElementById("dock");
+      const toolsEl = document.getElementById("tools");
+      function blockP5(evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+      }
+      dock.addEventListener("pointerdown", blockP5);
+      dock.addEventListener("mousedown", blockP5);
+      const toolBtns = toolsEl.querySelectorAll(".tool");
+      for (let i = 0; i < toolBtns.length; i++) {
+        toolBtns[i].addEventListener("click", function (evt) {
+          evt.stopPropagation();
+          setMode(this.dataset.mode);
+        });
+      }
+      const actBtns = dock.querySelectorAll("[data-act]");
+      for (let i = 0; i < actBtns.length; i++) {
+        actBtns[i].addEventListener("click", function (evt) {
+          evt.stopPropagation();
+          const act = this.dataset.act;
+          if (act === "undo") undoLast();
+          else if (act === "clear") clearGestures();
+          else if (act === "dark") toggleDark();
+          else if (act === "export") exportSheet();
+        });
+      }
+    }
+
+    function layoutLot() {
+      const dockW = DOCK_W;
+      const m = Math.min(width, height);
+      const pad = m * 0.08;
+      lot.pad = pad;
+      lot.x = dockW + pad * 0.55;
+      lot.y = pad;
+      lot.w = width - lot.x - pad;
+      lot.h = height - pad * 2;
+      lot.minS = m;
+      lot.northX = width - pad * 0.46;
+      lot.northY = pad * 0.38;
+      lot.scaleX = width - pad * 0.32;
+      lot.scaleY = lot.y + lot.h + Math.max(16, pad * 0.32);
+    }
+
+    function requestAnalog() {
+      analogDirty = true;
+      redraw();
+    }
+
+    function armSettle() {
+      if (drawing || mouseIsPressed) return;
+      // p5 listens on window, so a pass over the dock would otherwise arm a
+      // full analog retrace and park the hand glyph under the tray.
+      if (!overSheet()) return;
+      hasPtr = true;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(function () {
+        settleTimer = null;
+        requestAnalog();
+      }, SETTLE_MS);
+    }
+
+    function setup() {
+      // NEVER call setAttributes — p5 2 throws
+      // TypeError: _renderer._setAttributes is not a function
+      // and the canvas stays 100x100 blank. This vendor already
+      // defaults preserveDrawingBuffer to true.
+      createCanvas(windowWidth, windowHeight, WEBGL);
+      pixelDensity(1);
+      angleMode(DEGREES);
+      if (!brushesScaled) {
+        brush.scaleBrushes(5);
+        brushesScaled = true;
+      }
+      if (typeof brush.load === "function") brush.load();
+      const box = brush.box();
+      B.HB = pickBrush(box, ["HB", "2B", "pen"]);
+      B.charcoal = pickBrush(box, ["charcoal", "2B", "HB"]);
+      B.hatch = pickBrush(box, ["2H", "HB", "cpencil"]);
+      B.crayon = pickBrush(box, ["crayon", "pastel", "charcoal"]);
+      B.pastel = pickBrush(box, ["pastel", "crayon", "charcoal"]);
+      B.H2 = pickBrush(box, ["2H", "HB", "cpencil"]);
+      B.B2 = pickBrush(box, ["2B", "HB", "charcoal"]);
+      B.rotring = pickBrush(box, ["rotring", "pen", "HB"]);
+      B.cpencil = pickBrush(box, ["cpencil", "2H", "HB"]);
+      B.pen = pickBrush(box, ["pen", "rotring", "HB"]);
+      B.marker = pickBrush(box, ["marker", "rotring", "HB", "pen"]);
+      layoutLot();
+      noLoop();
+      cursor(CROSS);
+      wireHud();
+      updateCaption();
+      const cnv = document.querySelector("canvas");
+      if (cnv) {
+        function onCnvDown(e) {
+          if (e.button != null && e.button !== 0) return;
+          const xy = canvasXY(e);
+          if (!drawing && onDesk(xy[0], xy[1])) {
+            deskLift = true;
+            redraw();
+            return;
+          }
+          if (beginStroke(e) && e.pointerId != null && cnv.setPointerCapture) {
+            try { cnv.setPointerCapture(e.pointerId); } catch (err) {}
+          }
+        }
+        function onCnvMove(e) {
+          if (!drawing) return;
+          samplePointer(e);
+        }
+        function onCnvUp(e) {
+          if (deskLift) {
+            deskLift = false;
+            redraw();
+          }
+          if (!drawing) return;
+          endStroke(e);
+          if (e.pointerId != null && cnv.releasePointerCapture) {
+            try { cnv.releasePointerCapture(e.pointerId); } catch (err) {}
+          }
+        }
+        cnv.addEventListener("pointerdown", onCnvDown, true);
+        cnv.addEventListener("pointermove", onCnvMove, true);
+        cnv.addEventListener("pointerup", onCnvUp, true);
+        cnv.addEventListener("pointercancel", onCnvUp, true);
+        cnv.addEventListener("mousedown", onCnvDown, true);
+        cnv.addEventListener("mousemove", onCnvMove, true);
+        cnv.addEventListener("mouseup", onCnvUp, true);
+      }
+      registerYardWebMCP();
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      layoutLot();
+      requestAnalog();
+    }
+
+    function mouseMoved() {
+      if (drawing) sampleLive(mouseX, mouseY);
+      else armSettle();
+    }
+
+    function beginStroke(evt) {
+      if (drawing || strokeLock) return false;
+      if (livePts && livePts.length) return false;
+      const xy = canvasXY(evt);
+      if (!inLot(xy[0], xy[1])) return false;
+      if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+      drawing = true;
+      suppressExport = true;
+      hasPtr = true;
+      livePts = [[xy[0], xy[1]]];
+      liveT0 = millis();
+      lastDragDraw = 0;
+      loop();
+      return true;
+    }
+
+    function sampleLive(x, y) {
+      if (!drawing || !livePts) return;
+      if (!overSheet(x, y)) return;
+      const last = livePts[livePts.length - 1];
+      if (dist(x, y, last[0], last[1]) < 0.5) return;
+      livePts.push([x, y]);
+      const now = millis();
+      if (now - lastDragDraw >= 28) {
+        lastDragDraw = now;
+        redraw();
+      }
+    }
+
+    function samplePointer(evt) {
+      if (!drawing || !livePts) return;
+      let list = null;
+      if (evt && typeof evt.getCoalescedEvents === "function") {
+        try { list = evt.getCoalescedEvents(); } catch (err) { list = null; }
+      }
+      if (list && list.length) {
+        for (let i = 0; i < list.length; i++) {
+          const xy = canvasXY(list[i]);
+          sampleLive(xy[0], xy[1]);
+        }
+      } else {
+        const xy = canvasXY(evt);
+        sampleLive(xy[0], xy[1]);
+      }
+    }
+
+    function endStroke(evt) {
+      if (!livePts || !livePts.length) {
+        drawing = false;
+        noLoop();
+        return;
+      }
+      const pts = livePts.slice();
+      drawing = false;
+      strokeLock = true;
+      suppressExport = true;
+      livePts = null;
+      if (evt && evt.clientX != null && pts.length) {
+        const xy = canvasXY(evt);
+        const last = pts[pts.length - 1];
+        if (overSheet(xy[0], xy[1]) && dist(xy[0], xy[1], last[0], last[1]) >= 0.5) {
+          pts.push(xy);
+        }
+      }
+      resetBrush();
+      commitLive(pts);
+      flashTracing();
+      noLoop();
+      requestAnalog();
+      redraw();
+      armSettle();
+      setTimeout(function () { redraw(); }, 0);
+      setTimeout(function () { suppressExport = false; strokeLock = false; }, 120);
+    }
+
+    function mousePressed(evt) {
+      return;
+    }
+
+    function mouseDragged(evt) {
+      if (drawing) sampleLive(mouseX, mouseY);
+      return false;
+    }
+
+    function mouseReleased(evt) {
+      return;
+    }
+
+    function touchStarted(evt) {
+      return false;
+    }
+    function touchEnded(evt) {
+      return false;
+    }
+    function touchMoved(evt) {
+      if (drawing) sampleLive(mouseX, mouseY);
+      else armSettle();
+      return false;
+    }
+
+    function commitLive(pts) {
+      if (!pts || !pts.length) return;
+      const len = polyLen(pts);
+      let maxDisp = 0;
+      const p0 = pts[0];
+      for (let i = 0; i < pts.length; i++) {
+        maxDisp = Math.max(maxDisp, dist(p0[0], p0[1], pts[i][0], pts[i][1]));
+      }
+      const isClick = len < 11 || maxDisp < 6;
+      const minS = Math.min(width, height);
+
+      if (isClick) {
+        if (mode === "plant") {
+          const p = pts[pts.length - 1];
+          const tree = {
+            kind: "tree",
+            x: p[0],
+            y: p[1],
+            r: minS * (0.07 + hash(seedSeq + ":r") * 0.04),
+            seed: nextSeed()
+          };
+          stampHand(tree, [p], false);
+          gestures.push(tree);
+        }
+        showEmpty();
+        return;
+      }
+      if (pts.length < 3) return;
+
+      const copy = pts.map((p) => [p[0], p[1]]);
+      const dt = Math.max(16, millis() - liveT0);
+      const speed = len / dt;
+      const seed = nextSeed();
+
+      if (mode === "topo") {
+        const t = constrain((speed - 0.08) / 1.15, 0, 1);
+        const spacing = lerp(6.2, 15.5, t);
+        const spine = beautify(copy, { rounds: 2, step: Math.max(4, spacing * 0.42), jitter: 0.45, seed: seed });
+        const topoG = {
+          kind: "topo",
+          pts: spine,
+          spacing: spacing,
+          n: 5,
+          downSign: downSignOf(spine),
+          seed: seed
+        };
+        stampHand(topoG, copy, false);
+        gestures.push(topoG);
+      } else if (mode === "plant") {
+        const halfW = minS * 0.019;
+        const spine = beautify(copy, { rounds: 2, step: Math.max(5, halfW * 0.32), jitter: 0.55, seed: seed });
+        const plantG = {
+          kind: "plant",
+          pts: spine,
+          halfW: halfW,
+          clumps: plantClumps(spine, halfW, seed),
+          seed: seed
+        };
+        stampHand(plantG, copy, false);
+        gestures.push(plantG);
+      } else if (mode === "path") {
+        const halfW = minS * 0.018;
+        const dens = densify(copy, halfW * 0.5, false);
+        const spine = beautify(dens, { rounds: 2, step: Math.max(4, halfW * 0.4), jitter: 0.5, seed: seed });
+        const pathG = {
+          kind: "path",
+          pts: spine,
+          halfW: halfW,
+          joints: resample(spine, halfW * 2.6, false),
+          seed: seed
+        };
+        stampHand(pathG, copy, false);
+        gestures.push(pathG);
+      } else if (mode === "water") {
+        const gap = dist(copy[0][0], copy[0][1], copy[copy.length - 1][0], copy[copy.length - 1][1]);
+        const bb = bboxOf(copy);
+        const area = Math.max(1, bb.w * bb.h);
+        const enclosed = Math.abs(shoelace(copy)) / area;
+        // Ends must come back near each other relative to how far the stroke
+        // travelled. A bare arc encloses plenty of bbox area but never returns,
+        // so area alone used to turn every curved rill into a pool.
+        const gapRel = gap / Math.max(1, len);
+        // A stroke that runs out and doubles back also returns to its start,
+        // so a basin has to enclose something too.
+        const holdsWater = bb.w > minS * 0.03 && bb.h > minS * 0.03 && enclosed > 0.12;
+        const closed = len > minS * 0.14 && gapRel < 0.30 && holdsWater &&
+          (gap < minS * 0.09 || enclosed > 0.42);
+        if (closed) {
+          const basin = fittedBasin(copy, seed);
+          const basinG = {
+            kind: "water",
+            pts: basin.pts,
+            rill: false,
+            boxy: basin.boxy,
+            seed: seed
+          };
+          stampHand(basinG, copy, true);
+          gestures.push(basinG);
+        } else {
+          const rillG = {
+            kind: "water",
+            pts: beautify(copy, { rounds: 2, step: 6, jitter: 0.45, seed: seed }),
+            rill: true,
+            halfW: minS * 0.022,
+            seed: seed
+          };
+          stampHand(rillG, copy, false);
+          gestures.push(rillG);
+        }
+      } else if (mode === "wall") {
+        const halfW = minS * 0.013;
+        const boxy = isBoxy(copy);
+        let spine;
+        let closed = false;
+        if (boxy) {
+          spine = squareToBbox(copy, seed);
+          closed = true;
+        } else {
+          const dens = densify(copy, halfW * 0.5, false);
+          spine = beautify(dens, { rounds: 2, step: Math.max(4, halfW * 0.45), jitter: 0.45, seed: seed });
+        }
+        const wallG = {
+          kind: "wall",
+          pts: spine,
+          halfW: halfW,
+          closed: closed,
+          boxy: boxy,
+          corners: findCorners(spine, closed),
+          seed: seed
+        };
+        stampHand(wallG, copy, closed);
+        gestures.push(wallG);
+      }
+      showEmpty();
+    }
+
+    function keyPressed() {
+      const k = (key || "").toLowerCase();
+      if (k === "v") {
+        if (drawing) return;
+        vellumKey = true;
+        redraw();
+        return false;
+      }
+      if (drawing && k !== "e") return;
+      if (k === "t" || k === "h") setMode("topo");
+      else if (k === "w") setMode("water");
+      else if (k === "p" || k === "m") setMode("plant");
+      else if (k === "r" || k === "f") setMode("path");
+      else if (k === "l") setMode("wall");
+      else if (k === "d") toggleDark();
+      else if (k === "e") {
+        if (drawing || suppressExport) return;
+        exportSheet();
+      }
+      else if (k === "z") undoLast();
+      else if (k === "c" || keyCode === BACKSPACE || keyCode === DELETE) {
+        clearGestures();
+        return false;
+      }
+    }
+
+    function keyReleased() {
+      const k = (key || "").toLowerCase();
+      if (k === "v") {
+        vellumKey = false;
+        redraw();
+        return false;
+      }
+    }
+
+    function draw() {
+      if (drawing) sampleLive(mouseX, mouseY);
+      if (analogDirty) {
+        passSeed += 1;
+        analogDirty = false;
+        refreshHands();
+      }
+      randomSeed(passSeed);
+      noiseSeed(passSeed);
+
+      background(pal("tray"));
+      push();
+      translate(-width / 2, -height / 2);
+      resetBrush();
+
+      drawLot();
+      drawNorthScale();
+      for (let i = 0; i < gestures.length; i++) drawHandLayer(gestures[i]);
+      if (!vellumLifted()) {
+        drawVellumSheet();
+        for (let i = 0; i < gestures.length; i++) renderGesture(gestures[i]);
+      }
+
+      if (livePts && livePts.length) drawLivePreview();
+      else if (hasPtr) drawHandGlyph();
+
+      pop();
+      resetBrush();
+    }
+
+    function drawVellumSheet() {
+      push();
+      noStroke();
+      rectMode(CORNER);
+      const sheet = color(pal("vellum"));
+      sheet.setAlpha(dark ? 148 : 152);
+      fill(sheet);
+      rect(lot.x, lot.y, lot.w, lot.h);
+      noFill();
+      pop();
+    }
+
+    function drawLivePreview() {
+      let col;
+      if (mode === "topo") {
+        col = lerpColor(color(pal("sap")), color(pal("ink")), 0.26);
+      } else if (mode === "water") {
+        col = color(pal("water"));
+      } else if (mode === "plant") {
+        col = color(pal("olive"));
+      } else {
+        col = color(pal("ink"));
+      }
+      col.setAlpha(130);
+      stroke(col);
+      strokeWeight(2);
+      noFill();
+      for (let i = 1; i < livePts.length; i++) {
+        line(livePts[i - 1][0], livePts[i - 1][1], livePts[i][0], livePts[i][1]);
+      }
+    }
+
+    function drawLot() {
+      noStroke();
+      fill(pal("paper"));
+      beginShape();
+      vertex(lot.x, lot.y);
+      vertex(lot.x + lot.w, lot.y);
+      vertex(lot.x + lot.w, lot.y + lot.h);
+      vertex(lot.x, lot.y + lot.h);
+      endShape(CLOSE);
+      noFill();
+
+      resetBrush();
+      analogTooth();
+      const x0 = lot.x;
+      const y0 = lot.y;
+      const x1 = lot.x + lot.w;
+      const y1 = lot.y + lot.h;
+      brush.set(B.charcoal, pal("ink"), random(0.12, 0.18));
+      brush.line(x0 + random(2, 10), y1 + random(0.6, 2.4), x1 + random(-4, 2), y1 + random(0.8, 3.2));
+      analogTooth();
+      brush.set(B.H2, pal("ink"), random(0.12, 0.16));
+      brush.line(x1 + random(0.6, 2.6), y0 + random(6, 14), x1 + random(0.8, 3.0), y1 + random(-3, 2));
+
+      resetBrush();
+      analogTooth();
+      const j = 2.0;
+      const pts = [
+        [lot.x + random(-j, j), lot.y + random(-j, j)],
+        [lot.x + lot.w + random(-j, j), lot.y + random(-j, j)],
+        [lot.x + lot.w + random(-j, j), lot.y + lot.h + random(-j, j)],
+        [lot.x + random(-j, j), lot.y + lot.h + random(-j, j)]
+      ];
+      pts.push([pts[0][0], pts[0][1]]);
+      brush.set(B.H2, pal("ink"), 0.34);
+      dashPath(pts, 9, 6.5);
+      brush.set(B.rotring, pal("ink"), 0.22);
+      dashPath(jitter(pts, 0.7), 8, 7);
+      brush.noField();
+    }
+
+    function drawNorthScale() {
+      resetBrush();
+      analogTooth();
+      const L = lot.minS * 0.072;
+      const rot = random(8, 12);
+      const ux = sin(rot);
+      const uy = -cos(rot);
+      const nS = 14;
+      const lotRight = lot.x + lot.w;
+      const lotBot = lot.y + lot.h;
+      let tipX = lot.northX;
+      let tipY = lot.northY;
+      let tailX = tipX - ux * L;
+      let tailY = tipY - uy * L;
+      const open = random(34, 42);
+      const arm = 0.32 * L;
+      const bx = -ux;
+      const by = -uy;
+      const oc = cos(open);
+      const os = sin(open);
+      let a1x = tipX + (bx * oc - by * os) * arm;
+      let a1y = tipY + (bx * os + by * oc) * arm;
+      let a2x = tipX + (bx * oc + by * os) * arm;
+      let a2y = tipY + (-bx * os + by * oc) * arm;
+      const nX0 = tipX + 10 - 0.14 * nS;
+      const minX = Math.min(tipX, tailX, a1x, a2x, nX0);
+      const clearR = 18;
+      let dx = 0;
+      if (minX < lotRight + clearR) dx = lotRight + clearR - minX;
+      if (dx) {
+        tipX += dx;
+        tailX += dx;
+        a1x += dx;
+        a2x += dx;
+      }
+      const pole = random() > 0.5 ? B.charcoal : B.HB;
+      const poleW = random(0.50, 0.62);
+      brush.set(pole, pal("ink"), poleW);
+      brush.line(tailX, tailY, tipX, tipY);
+
+      analogTooth();
+      brush.line(tipX, tipY, a1x, a1y);
+      brush.line(tipX, tipY, a2x, a2y);
+
+      brush.wiggle(0.6);
+      brush.set(pole, pal("ink"), poleW - 0.08);
+      brush.line(tipX, tipY, a1x + random(-0.6, 0.6), a1y + random(-0.6, 0.6));
+      brush.line(tipX, tipY, a2x + random(-0.6, 0.6), a2y + random(-0.6, 0.6));
+      brush.noField();
+
+      drawWord("N", tipX + 10 - 0.14 * nS, tipY - 2 - 0.88 * nS, nS, pal("ink"));
+
+      resetBrush();
+      analogTooth();
+      const bar = lot.minS * 0.10;
+      let rx = lot.scaleX;
+      let sy = lot.scaleY;
+      if (sy < lotBot + 12) sy = lotBot + 12;
+      if (rx < lotRight + 16) rx = Math.min(width - 10, lotRight + 16);
+      if (rx > width - 8) rx = width - 8;
+      const lx = rx - bar;
+      const gap = random(3.0, 3.8);
+      const y1a = sy + random(-0.35, 0.35);
+      const y1b = sy + random(-0.35, 0.35);
+      const y2a = sy + gap + random(0.4, 0.8) * (random() < 0.5 ? 1 : -1);
+      const y2b = y2a + random(-0.5, 0.5);
+      const scalePen = random() > 0.5 ? B.charcoal : B.HB;
+      brush.set(scalePen, pal("ink"), random(0.42, 0.52));
+      analogTooth();
+      brush.line(lx, y1a, rx, y1b);
+      analogTooth();
+      brush.line(lx + random(-0.5, 0.5), y2a, rx + random(-0.5, 0.5), y2b);
+
+      const tick = random(7, 9);
+      const tAng = 18;
+      analogTooth();
+      brush.line(lx, y1a, lx + cos(tAng) * tick, y1a - sin(tAng) * tick);
+      analogTooth();
+      brush.line(rx, y1b, rx - cos(tAng) * tick, y1b - sin(tAng) * tick);
+      brush.noField();
+    }
+
+    const GLYPH = {
+      N: [[[0.14, 0.88], [0.14, 0.12], [0.86, 0.88], [0.86, 0.12]]]
+    };
+
+    function drawWord(word, x, y, s, col) {
+      resetBrush();
+      brush.set(B.H2, col, random(0.40, 0.48));
+      analogTooth();
+      let cx = x;
+      for (let i = 0; i < word.length; i++) {
+        const paths = GLYPH[word[i]];
+        if (paths) {
+          for (let p = 0; p < paths.length; p++) {
+            const pts = paths[p].map((q) => [cx + q[0] * s, y + q[1] * s]);
+            shape(pts, false, 0.08);
+          }
+        }
+        cx += s * 0.82;
+      }
+      brush.noField();
+    }
+
+    function drawHandGlyph() {
+      if (!overSheet()) return;
+      const x = mouseX;
+      const y = mouseY;
+      const s = 13;
+      resetBrush();
+      analogTooth();
+      brush.set(B.charcoal, pal("ink"), 0.4);
+      brush.line(x - s * 0.32, y, x + s * 0.3, y);
+      brush.line(x - s * 0.28, y + s * 0.38, x + s * 0.26, y + s * 0.38);
+      brush.line(x - s * 0.32, y, x - s * 0.28, y + s * 0.38);
+      brush.line(x + s * 0.3, y, x + s * 0.26, y + s * 0.38);
+      brush.line(x - s * 0.18, y, x - s * 0.22, y - s * 0.52);
+      brush.line(x + 1, y, x + 1, y - s * 0.68);
+      brush.noField();
+    }
+
+    function renderGesture(g) {
+      randomSeed(passSeed + g.seed);
+      if (g.kind === "topo") drawTopoGesture(g);
+      else if (g.kind === "water") {
+        if (g.rill) drawRillGesture(g);
+        else drawWaterGesture(g);
+      } else if (g.kind === "plant") drawPlantGesture(g);
+      else if (g.kind === "tree") drawTreeGesture(g);
+      else if (g.kind === "path") drawPathGesture(g);
+      else if (g.kind === "wall") drawWallGesture(g);
+    }
+
+    function drawTopoGesture(g) {
+      if (!g.pts || g.pts.length < 2) return;
+      resetBrush();
+      const pts = analogize(g.pts, 0.9, 1, false);
+      const mixed = lerpColor(color(pal("sap")), color(pal("ink")), 0.26);
+      const lightSapGrey = "#" + [red(mixed), green(mixed), blue(mixed)].map(function (n) {
+        return ("0" + Math.round(n).toString(16)).slice(-2);
+      }).join("");
+      const n = g.n != null ? g.n : 5;
+      const spacing = g.spacing * random(0.97, 1.05);
+      const downSign = g.downSign != null ? g.downSign : 1;
+      const offsets = {};
+      for (let i = -n; i <= n; i++) {
+        let off = offsetEdge(pts, i * spacing, false);
+        if (!off || off.length < 2) continue;
+        const frac = 0.08 * Math.abs(i);
+        if (frac > 0) off = trimEnds(off, frac);
+        if (!off || off.length < 2 || polyLen(off) < 4) continue;
+        offsets[i] = off;
+        const isIndex = (i % 4 === 0);
+        if (isIndex) {
+          analogTooth();
+          brush.set(random() > 0.5 ? B.HB : B.charcoal, lightSapGrey, random(0.55, 0.72));
+          shape(chaikin(jitter(off, 0.7), 1, false), false, 0.18);
+        } else {
+          analogTooth();
+          brush.set(random() > 0.5 ? B.H2 : B.HB, lightSapGrey, random(0.28, 0.40));
+          dashPath(jitter(off, 0.65), random(11, 16), random(4, 7));
+        }
+      }
+      resetBrush();
+      analogTooth();
+      brush.set(B.H2, pal("sap"), random(0.22, 0.34));
+      for (let i = 1; i <= n; i++) {
+        const k = i * downSign;
+        const inner = offsets[k - downSign];
+        const outer = offsets[k];
+        if (!inner || !outer || inner.length < 2) continue;
+        const samples = resample(inner, Math.max(14, spacing * 2.2), false);
+        for (let s = 1; s < samples.length - 1; s++) {
+          if (hash(g.seed + ":g:" + k + ":" + s + ":" + passSeed) > 0.42) continue;
+          const p = samples[s];
+          const mid = outer[Math.min(outer.length - 1, Math.round(s / (samples.length - 1) * (outer.length - 1)))];
+          const dx = mid[0] - p[0];
+          const dy = mid[1] - p[1];
+          const ln = Math.hypot(dx, dy) || 1;
+          const tick = spacing * (0.28 + hash(g.seed + ":tl:" + s) * 0.22);
+          const ox = dx / ln;
+          const oy = dy / ln;
+          const inset = spacing * 0.12;
+          brush.line(p[0] + ox * inset, p[1] + oy * inset, p[0] + ox * (inset + tick), p[1] + oy * (inset + tick));
+          if (hash(g.seed + ":stip:" + k + ":" + s) < 0.18) {
+            const sx = p[0] + ox * spacing * 0.45 + (hash(g.seed + ":sx:" + s) - 0.5) * 2.4;
+            const sy = p[1] + oy * spacing * 0.45 + (hash(g.seed + ":sy:" + s) - 0.5) * 2.4;
+            brush.line(sx, sy, sx + 0.8, sy + 0.6);
+          }
+        }
+      }
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawPlantGesture(g) {
+      const clumps = g.clumps;
+      if (!clumps || !clumps.length) return;
+      for (let pass = 0; pass < 2; pass++) {
+        resetBrush();
+        brush.mass(B.crayon, pal("olive"), {
+          precision: random(0.52, 0.68),
+          strength: random(0.74, 0.95),
+          gradient: 0.2,
+          outline: false
+        });
+        for (let i = 0; i < clumps.length; i++) {
+          const c = clumps[i];
+          brush.circle(c.x + random(-0.9, 0.9), c.y + random(-0.9, 0.9), c.r * (pass ? 0.84 : 1), 0.52);
+        }
+      }
+
+      resetBrush();
+      brush.mass(B.pastel, random() > 0.45 ? pal("sap") : pal("sapDeep"), {
+        precision: random(0.42, 0.54),
+        strength: random(0.5, 0.82),
+        gradient: 0.18,
+        outline: false
+      });
+      for (let i = 0; i < clumps.length; i++) {
+        const c = clumps[i];
+        brush.circle(c.x + c.r * 0.14, c.y - c.r * 0.1, c.r * random(0.52, 0.78), 0.5);
+      }
+
+      resetBrush();
+      analogTooth();
+      brush.set(B.charcoal, pal("sapDeep"), 0.26);
+      for (let i = 0; i < clumps.length; i++) {
+        const c = clumps[i];
+        // Outlining every clump reads as a chain of empty rings, not foliage.
+        if (!c.tree && hash(g.seed + ":ol:" + i) > 0.5) continue;
+        brush.circle(c.x, c.y, c.r * (c.tree ? 1.02 : 0.98), 0.5);
+      }
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawTreeGesture(g) {
+      resetBrush();
+      const tx = g.x + random(-4, 4);
+      const ty = g.y + random(-4, 4);
+      const r = g.r * random(0.96, 1.05);
+
+      resetBrush();
+      const shadowCol = random() > 0.5 ? pal("terracotta") : pal("ink");
+      brush.fill(shadowCol, random(62, 86));
+      brush.fillBleed(0.02, "out");
+      brush.polygon(ellipsePts(tx + r * 0.12, ty + r * 0.62, r * 0.9, r * 0.22, 10));
+      brush.noFill();
+
+      resetBrush();
+      brush.mass(B.crayon, pal("sapDeep"), {
+        precision: 0.42,
+        strength: 0.84,
+        gradient: 0.22,
+        outline: false
+      });
+      brush.circle(tx, ty, r, 0.55);
+
+      resetBrush();
+      brush.mass(B.pastel, pal("olive"), {
+        precision: 0.48,
+        strength: 0.7,
+        gradient: 0.24,
+        outline: false
+      });
+      brush.circle(tx + r * 0.16, ty - r * 0.12, r * 0.7, 0.58);
+      brush.circle(tx - r * 0.14, ty + r * 0.1, r * 0.58, 0.5);
+
+      resetBrush();
+      analogTooth();
+      brush.set(B.charcoal, pal("sapDeep"), 0.36);
+      brush.circle(tx, ty, r * 0.98, 0.52);
+      brush.noField();
+
+      resetBrush();
+      analogTooth();
+      const tick = r * 0.28;
+      brush.set(random() > 0.5 ? B.HB : B.rotring, random() > 0.45 ? pal("terracotta") : pal("terraDeep"), 0.5);
+      brush.line(tx - tick * 0.08, ty + r * 0.08, tx + tick * 0.1, ty + r * 0.08 + tick);
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawPathGesture(g) {
+      if (!g.pts || g.pts.length < 2) return;
+      resetBrush();
+      const pts = analogize(g.pts, 1.15, 1, false);
+      const minS = Math.min(width, height);
+      const halfW = g.halfW != null ? g.halfW : minS * 0.018;
+      const left = offsetEdge(pts, halfW);
+      const right = offsetEdge(pts, -halfW);
+      const rib = ribbon(pts, halfW);
+
+      resetBrush();
+      const fillCol = random() > 0.28 ? pal("terracotta") : pal("pave");
+      forOpenRibbonQuads(pts, halfW, function (q) {
+        brush.fill(fillCol, random(96, 128));
+        brush.fillBleed(0);
+        brush.fillTexture(0.5, 0.45);
+        brush.polygon(q);
+        resetBrush();
+        brush.noFill();
+        brush.noHatch();
+      });
+
+      resetBrush();
+      analogTooth();
+      brush.set(B.charcoal, pal("ink"), 0.6);
+      shape(chaikin(jitter(left, 1.15), 1, false), false, 0.18);
+      brush.set(B.HB, pal("ink"), 0.48);
+      shape(chaikin(jitter(right, 1.15), 1, false), false, 0.18);
+      brush.set(B.rotring, pal("ink"), 0.36);
+      shape(jitter(left, 0.7), false, 0.12);
+
+      analogTooth();
+      brush.set(B.HB, pal("ink"), 0.44);
+      const joints = g.joints && g.joints.length ? g.joints : resample(pts, halfW * 2.6, false);
+      const tickLen = halfW * 0.55;
+      function ticksAt(p, heading) {
+        const nx = -sin(heading);
+        const ny = cos(heading);
+        const lx = p[0] + nx * halfW;
+        const ly = p[1] + ny * halfW;
+        const rx = p[0] - nx * halfW;
+        const ry = p[1] - ny * halfW;
+        brush.line(lx - nx * tickLen * 0.15, ly - ny * tickLen * 0.15, lx + nx * tickLen * 0.55, ly + ny * tickLen * 0.55);
+        brush.line(rx + nx * tickLen * 0.15, ry + ny * tickLen * 0.15, rx - nx * tickLen * 0.55, ry - ny * tickLen * 0.55);
+      }
+      for (let i = 1; i < joints.length - 1; i++) {
+        const j = joints[i];
+        const prev = joints[i - 1];
+        const next = joints[Math.min(joints.length - 1, i + 1)];
+        const a1 = atan2(j[1] - prev[1], j[0] - prev[0]);
+        const a2 = atan2(next[1] - j[1], next[0] - j[0]);
+        let turn = a2 - a1;
+        while (turn > 180) turn -= 360;
+        while (turn < -180) turn += 360;
+        // At an elbow the joint ticks from both legs land on top of each other.
+        if (Math.abs(turn) > 30) continue;
+        ticksAt(j, atan2(next[1] - prev[1], next[0] - prev[0]));
+      }
+      analogTooth();
+      brush.set(B.charcoal, pal("ink"), 0.52);
+      function endCap(idx) {
+        const p = pts[idx];
+        const heading = headingAt(pts, idx, false);
+        const nx = -sin(heading);
+        const ny = cos(heading);
+        const cap = halfW * 1.05;
+        brush.line(p[0] + nx * cap, p[1] + ny * cap, p[0] - nx * cap, p[1] - ny * cap);
+      }
+      endCap(0);
+      endCap(pts.length - 1);
+
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawWaterGesture(g) {
+      if (!g.pts || g.pts.length < 3) return;
+      resetBrush();
+      let outline;
+      if (g.boxy) {
+        outline = jitter(g.pts, 1.35);
+      } else {
+        outline = analogize(g.pts, 1.15, 1, true);
+      }
+
+      resetBrush();
+      brush.fill(pal("water"), random(128, 158));
+      brush.fillBleed(0.04, "out");
+      brush.fillTexture(0.5, 0.45);
+      brush.polygon(outline);
+      brush.noFill();
+
+      resetBrush();
+      brush.hatchStyle(B.H2, random() > 0.4 ? pal("waterDeep") : pal("water"), random(0.28, 0.4));
+      brush.hatch(random(12, 20), random(6, 28), {
+        rand: 0.15,
+        continuous: false,
+        gradient: 0
+      });
+      brush.polygon(outline);
+      brush.noHatch();
+
+      resetBrush();
+      analogTooth();
+      brush.set(B.charcoal, pal("waterDeep"), 0.72);
+      shape(outline, true, g.boxy ? 0.04 : 0.42);
+      brush.set(B.pen, pal("water"), 0.4);
+      shape(jitter(outline, 0.9), true, g.boxy ? 0.04 : 0.4);
+
+      const shore = insetClosed(outline, random(5, 8));
+      analogTooth();
+      brush.set(B.H2, pal("waterDeep"), random(0.32, 0.44));
+      const shoreLoop = shore.concat([shore[0]]);
+      dashPath(jitter(shoreLoop, 0.6), random(7, 11), random(4, 7));
+
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawRillGesture(g) {
+      if (!g.pts || g.pts.length < 2) return;
+      resetBrush();
+      const pts = analogize(g.pts, 0.9, 1, false);
+      const minS = Math.min(width, height);
+      const halfW = g.halfW != null ? g.halfW : minS * 0.022;
+      const rib = ribbon(pts, halfW);
+      const core = ribbon(pts, halfW * 0.5);
+      const left = offsetEdge(pts, halfW);
+      const right = offsetEdge(pts, -halfW);
+      const flow = headingOf(pts);
+
+      resetBrush();
+      forOpenRibbonQuads(pts, halfW, function (q) {
+        brush.fill(pal("water"), random(190, 210));
+        brush.fillBleed(0);
+        brush.fillTexture(0.5, 0.45);
+        brush.polygon(q);
+        resetBrush();
+        brush.noFill();
+        brush.noHatch();
+      });
+
+      resetBrush();
+      forOpenRibbonQuads(pts, halfW * 0.5, function (q) {
+        brush.fill(pal("waterDeep"), random(110, 140));
+        brush.fillBleed(0);
+        brush.fillTexture(0.55, 0.4);
+        brush.polygon(q);
+        resetBrush();
+        brush.noFill();
+        brush.noHatch();
+      });
+
+      analogTooth();
+      if (left && left.length >= 2) {
+        brush.set(B.H2, pal("water"), random(0.44, 0.58));
+        dashPath(left, 11, 6);
+      }
+      analogTooth();
+      if (right && right.length >= 2) {
+        brush.set(B.rotring, pal("water"), random(0.38, 0.5));
+        dashPath(right, 10, 6);
+      }
+      analogTooth();
+      brush.set(B.H2, pal("water"), random(0.4, 0.54));
+      const tickGap = Math.max(20, halfW * 1.9);
+      let acc = tickGap * 0.35;
+      for (let i = 1; i < pts.length; i++) {
+        const d = dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+        acc += d;
+        if (acc < tickGap) continue;
+        acc = 0;
+        const x = pts[i][0];
+        const y = pts[i][1];
+        const heading = atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0]);
+        const arm = halfW * 0.46;
+        brush.line(x, y, x + cos(heading + 148) * arm, y + sin(heading + 148) * arm);
+        brush.line(x, y, x + cos(heading - 148) * arm, y + sin(heading - 148) * arm);
+      }
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawWallGesture(g) {
+      if (!g.pts || g.pts.length < 2) return;
+      resetBrush();
+      const closed = !!g.closed;
+      const boxy = !!g.boxy;
+      const minS = Math.min(width, height);
+      const halfW = g.halfW != null ? g.halfW : minS * 0.013;
+      // A boxy wall must not be run through chaikin — it rounds the four
+      // corners away and the courtyard comes back as an oval.
+      const pts = boxy
+        ? jitter(densify(g.pts, Math.max(5, halfW * 0.6), closed), 0.75)
+        : analogize(g.pts, 0.9, 1, closed);
+      const curve = boxy ? 0.02 : 0.18;
+      const left = offsetEdge(pts, halfW, closed);
+      const right = offsetEdge(pts, -halfW, closed);
+      const rib = ribbon(pts, halfW, closed);
+
+      resetBrush();
+      if (closed) {
+        brush.hatchStyle(random() > 0.5 ? B.H2 : B.HB, pal("sapDeep"), random(0.28, 0.38));
+        brush.hatch(random(7, 11), headingOf(pts) + 90, {
+          rand: 0.1,
+          continuous: false,
+          gradient: 0
+        });
+        brush.polygon(rib);
+        brush.noHatch();
+      } else {
+        forOpenRibbonQuads(pts, halfW, function (q) {
+          brush.fill(pal("sapDeep"), random(70, 110));
+          brush.fillBleed(0);
+          brush.polygon(q);
+          resetBrush();
+          brush.noFill();
+          brush.noHatch();
+        });
+      }
+
+      resetBrush();
+      analogTooth();
+      brush.set(B.charcoal, pal("ink"), 0.7);
+      shape(boxy ? jitter(left, 0.7) : chaikin(jitter(left, 0.8), 1, closed), closed, curve);
+      analogTooth();
+      brush.set(random() > 0.5 ? B.HB : B.rotring, pal("ink"), 0.5);
+      shape(boxy ? jitter(right, 0.7) : chaikin(jitter(right, 0.8), 1, closed), closed, curve);
+
+      analogTooth();
+      brush.set(B.rotring, pal("ink"), 0.4);
+      const copePts = resample(pts, Math.max(10, halfW * 3.2), closed);
+      const copeLen = halfW * 0.7;
+      for (let i = 0; i < copePts.length; i++) {
+        const h = headingAt(copePts, i, closed);
+        const nx = -sin(h);
+        const ny = cos(h);
+        const p = copePts[i];
+        const lx = p[0] + nx * halfW;
+        const ly = p[1] + ny * halfW;
+        brush.line(lx, ly, lx + nx * copeLen, ly + ny * copeLen);
+      }
+
+      analogTooth();
+      brush.set(B.charcoal, pal("ink"), 0.62);
+      const corners = g.corners && g.corners.length ? g.corners : findCorners(pts, closed);
+      for (let i = 0; i < corners.length; i++) {
+        const c = corners[i];
+        // c.i indexes the committed spine; pts has been densified/smoothed
+        // since, so resolve the corner by position rather than by index.
+        const idx = nearestIndex(pts, c.x, c.y);
+        const h = headingAt(pts, idx, closed);
+        const nx = -sin(h);
+        const ny = cos(h);
+        const cope = halfW * 1.15;
+        brush.line(c.x + nx * halfW * 0.2, c.y + ny * halfW * 0.2, c.x + nx * (halfW + cope), c.y + ny * (halfW + cope));
+      }
+
+      brush.noField();
+      resetBrush();
+    }
+
+    // --- WebMCP: agent tools on the live sheet (same commit path as the hand) ---
+    function lotFromNorm(nx, ny) {
+      const x = lot.x + Math.max(0, Math.min(1, Number(nx))) * lot.w;
+      const y = lot.y + Math.max(0, Math.min(1, Number(ny))) * lot.h;
+      return [x, y];
+    }
+
+    function parseAgentPoints(input) {
+      const raw = (input && input.points) || [];
+      if (!Array.isArray(raw) || !raw.length) {
+        throw new Error("points required: array of {x,y} in 0–1 lot space");
+      }
+      const out = [];
+      for (let i = 0; i < raw.length; i++) {
+        const pt = raw[i];
+        if (Array.isArray(pt) && pt.length >= 2) out.push(lotFromNorm(pt[0], pt[1]));
+        else if (pt && typeof pt === "object") out.push(lotFromNorm(pt.x, pt.y));
+        else throw new Error("each point must be {x,y} or [x,y] in 0–1 lot space");
+      }
+      return out;
+    }
+
+    function agentLay(toolMode, input) {
+      if (drawing) endStroke();
+      const pts = parseAgentPoints(input);
+      const prev = mode;
+      mode = toolMode;
+      liveT0 = millis() - 900;
+      const before = gestures.length;
+      commitLive(pts);
+      showEmpty();
+      requestAnalog();
+      redraw();
+      mode = prev;
+      updateCaption();
+      const added = gestures.length - before;
+      if (added <= 0) {
+        return {
+          ok: false,
+          tool: toolMode,
+          reason: "gesture not committed (need enough travel / points for this tool)",
+          gestures: gestures.length
+        };
+      }
+      const g = gestures[gestures.length - 1];
+      return {
+        ok: true,
+        tool: toolMode,
+        kind: g.kind,
+        rill: !!g.rill,
+        gestures: gestures.length,
+        points_used: pts.length
+      };
+    }
+
+    function agentClearSheet() {
+      if (drawing) endStroke();
+      clearGestures();
+      redraw();
+      return { ok: true, gestures: 0 };
+    }
+
+    function agentExportSheet() {
+      if (drawing || suppressExport) {
+        return { ok: false, reason: "busy drawing; try again when the stroke settles" };
+      }
+      exportSheet();
+      return { ok: true, file: "yard-draft.png", covered: true };
+    }
+
+    const YARD_WEBMCP_TOOLS = [
+      {
+        name: "lay_contour",
+        title: "Lay contour",
+        description: "Lay a Terrain contour polyline on the Yard Draft lot. Points are 0–1 across the dashed lot (not the full window). Uses the same beautify path as a hand drag.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            points: {
+              type: "array",
+              minItems: 3,
+              description: "Polyline in lot-normalized 0–1 space, left→right / top→bottom.",
+              items: {
+                type: "object",
+                properties: {
+                  x: { type: "number", minimum: 0, maximum: 1 },
+                  y: { type: "number", minimum: 0, maximum: 1 }
+                },
+                required: ["x", "y"]
+              }
+            }
+          },
+          required: ["points"]
+        },
+        annotations: { readOnlyHint: false, consequentialHint: false },
+        execute: async function (input) { return agentLay("topo", input); }
+      },
+      {
+        name: "lay_water",
+        title: "Lay water",
+        description: "Lay Water on the lot: an open polyline becomes a rill; a returning loop that encloses becomes a pool. Points are 0–1 in lot space.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            points: {
+              type: "array",
+              minItems: 3,
+              description: "Open rill or closed basin polyline in lot-normalized 0–1 space.",
+              items: {
+                type: "object",
+                properties: {
+                  x: { type: "number", minimum: 0, maximum: 1 },
+                  y: { type: "number", minimum: 0, maximum: 1 }
+                },
+                required: ["x", "y"]
+              }
+            }
+          },
+          required: ["points"]
+        },
+        annotations: { readOnlyHint: false },
+        execute: async function (input) { return agentLay("water", input); }
+      },
+      {
+        name: "lay_planting",
+        title: "Lay planting",
+        description: "Lay Planting on the lot. One point (or a tiny cluster) plants a tree; a longer polyline lays a hedge. Points are 0–1 in lot space.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            points: {
+              type: "array",
+              minItems: 1,
+              description: "Tree click = 1 point; hedge = polyline. Lot-normalized 0–1.",
+              items: {
+                type: "object",
+                properties: {
+                  x: { type: "number", minimum: 0, maximum: 1 },
+                  y: { type: "number", minimum: 0, maximum: 1 }
+                },
+                required: ["x", "y"]
+              }
+            }
+          },
+          required: ["points"]
+        },
+        annotations: { readOnlyHint: false },
+        execute: async function (input) { return agentLay("plant", input); }
+      },
+      {
+        name: "lay_path",
+        title: "Lay path",
+        description: "Lay a Path / stone walk polyline on the lot. Points are 0–1 in lot space. Same densify→beautify path as a hand L.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            points: {
+              type: "array",
+              minItems: 3,
+              description: "Walk polyline in lot-normalized 0–1 space.",
+              items: {
+                type: "object",
+                properties: {
+                  x: { type: "number", minimum: 0, maximum: 1 },
+                  y: { type: "number", minimum: 0, maximum: 1 }
+                },
+                required: ["x", "y"]
+              }
+            }
+          },
+          required: ["points"]
+        },
+        annotations: { readOnlyHint: false },
+        execute: async function (input) { return agentLay("path", input); }
+      },
+      {
+        name: "lay_wall",
+        title: "Lay wall",
+        description: "Lay a Wall / edge on the lot. Open polyline = wall run; boxy loop = enclosure. Points are 0–1 in lot space.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            points: {
+              type: "array",
+              minItems: 3,
+              description: "Wall polyline in lot-normalized 0–1 space.",
+              items: {
+                type: "object",
+                properties: {
+                  x: { type: "number", minimum: 0, maximum: 1 },
+                  y: { type: "number", minimum: 0, maximum: 1 }
+                },
+                required: ["x", "y"]
+              }
+            }
+          },
+          required: ["points"]
+        },
+        annotations: { readOnlyHint: false },
+        execute: async function (input) { return agentLay("wall", input); }
+      },
+      {
+        name: "clear_sheet",
+        title: "Clear sheet",
+        description: "Clear every gesture on the Yard Draft sheet. The dashed lot, north mark, and scale stay. Same as Clear / c.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, consequentialHint: true },
+        execute: async function () { return agentClearSheet(); }
+      },
+      {
+        name: "export_sheet",
+        title: "Take the sheet",
+        description: "Export the covered hangable sheet as yard-draft.png (vellum down). Same as Take the sheet / e. Does not lift the yellow paper.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true },
+        execute: async function () { return agentExportSheet(); }
+      }
+    ];
+
+    async function registerYardWebMCP() {
+      window.__YardDraftWebMCP = {
+        tools: YARD_WEBMCP_TOOLS.map(function (t) {
+          return { name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema };
+        }),
+        invoke: async function (name, input) {
+          const t = YARD_WEBMCP_TOOLS.find(function (x) { return x.name === name; });
+          if (!t) throw new Error("unknown tool: " + name);
+          return t.execute(input || {});
+        }
+      };
+
+      const modelContext = document.modelContext || navigator.modelContext;
+      if (!modelContext || typeof modelContext.registerTool !== "function") {
+        console.info("[Yard Draft WebMCP] document.modelContext unavailable — tools on window.__YardDraftWebMCP.invoke for local smoke; native register needs WebMCP-capable Chrome (HTTPS / localhost).");
+        return { native: false, tools: YARD_WEBMCP_TOOLS.map(function (t) { return t.name; }) };
+      }
+
+      const names = [];
+      for (let i = 0; i < YARD_WEBMCP_TOOLS.length; i++) {
+        const t = YARD_WEBMCP_TOOLS[i];
+        try {
+          await modelContext.registerTool({
+            name: t.name,
+            title: t.title,
+            description: t.description,
+            inputSchema: t.inputSchema,
+            annotations: t.annotations,
+            execute: t.execute
+          });
+          names.push(t.name);
+        } catch (err) {
+          console.warn("[Yard Draft WebMCP] registerTool failed for " + t.name, err);
+        }
+      }
+      console.info("[Yard Draft WebMCP] registered", names.join(", "));
+      window.__YardDraftWebMCP.native = true;
+      window.__YardDraftWebMCP.registered = names;
+      return { native: true, tools: names };
+    }
+  </script>
+</body>
+</html>
