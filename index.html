@@ -665,6 +665,7 @@
     let deskLift = false;
     let vellumAlpha = 152; // hold V / hover Tone + wheel: 40–220
     let toneHover = false;
+    let bakingWorld = false;
     const SETTLE_MS = 700;
     const DOCK_W = 232;
     let viewZoom = 1;
@@ -1948,7 +1949,9 @@
         translate(-width / 2, -height / 2);
         background(pal("tray"));
         resetBrush();
+        bakingWorld = true;
         drawWorldSheet();
+        bakingWorld = false;
         pop();
         resetBrush();
         sheetCache = get(lot.x, lot.y, lot.w, lot.h);
@@ -2001,8 +2004,8 @@
       } else if (vellumKey) {
         drawVellumSheet();
       }
-      // Border after fill/vellum, same world transform — never a second screen-space frame
-      drawLotBorder();
+      // Border after fill/vellum (skip while baking — redrawn after blit in world space)
+      if (!bakingWorld) drawLotBorder();
     }
 
     function composeViewport(extraWorld) {
