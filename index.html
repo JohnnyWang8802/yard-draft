@@ -750,6 +750,7 @@
     let vellumAlpha = 152; // Tone-row slider: 40–220
     let alphaFlashTimer = null;
     let toneTimer = null;
+    let dragCueTimer = null;
 
     function flashAlphaPct() {
       const el = document.getElementById("alpha-flash");
@@ -1499,8 +1500,32 @@
       brush.wiggle(random(1.6, 2.8));
     }
 
+    function holdDragCue() {
+      const el = document.getElementById("token");
+      if (!el) return;
+      if (el.dataset.cue !== "1") {
+        el.dataset.cue = "1";
+        el.textContent = "*drop the plan";
+        el.classList.add("on");
+      }
+      if (dragCueTimer) clearTimeout(dragCueTimer);
+      // dragleave fires constantly while crossing elements; a short idle
+      // timeout is the reliable way to know the file has left the window
+      dragCueTimer = setTimeout(releaseDragCue, 220);
+    }
+
+    function releaseDragCue() {
+      if (dragCueTimer) { clearTimeout(dragCueTimer); dragCueTimer = null; }
+      const el = document.getElementById("token");
+      if (!el || el.dataset.cue !== "1") return;
+      el.dataset.cue = "0";
+      el.classList.remove("on");
+    }
+
     function flashToken(name) {
       const el = document.getElementById("token");
+      if (dragCueTimer) { clearTimeout(dragCueTimer); dragCueTimer = null; }
+      el.dataset.cue = "0";
       el.textContent = "*" + name;
       el.classList.remove("on");
       void el.offsetWidth;
@@ -1591,22 +1616,41 @@
       if (k) k.textContent = "u";
     }
 
+    // A survey scan or a phone photo of one runs to several thousand pixels a
+    // side. The sheet never shows it larger than the lot, and every pixel over
+    // that is texture memory and upload time for nothing.
+    const UNDERLAY_MAX = 2400;
+
     function loadUnderlayFile(file) {
-      if (!file || !/^image\//.test(file.type || "")) {
+      if (!file) return;
+      if (!/^image\//.test(file.type || "")) {
         flashToken("not an image");
         return;
       }
-      const reader = new FileReader();
-      reader.onload = function () {
-        loadImage(String(reader.result), function (img) {
-          setUnderlay(img, file.name);
-          flashToken("plan under");
-        }, function () {
-          flashToken("could not read");
-        });
-      };
-      reader.onerror = function () { flashToken("could not read"); };
-      reader.readAsDataURL(file);
+      // Object URL rather than a data URL: no base64 copy of the whole file
+      const url = URL.createObjectURL(file);
+      loadImage(url, function (img) {
+        URL.revokeObjectURL(url);
+        const long = Math.max(img.width, img.height);
+        if (long > UNDERLAY_MAX) {
+          const k = UNDERLAY_MAX / long;
+          img.resize(Math.max(1, Math.round(img.width * k)),
+            Math.max(1, Math.round(img.height * k)));
+        }
+        setUnderlay(img, file.name);
+        flashToken("plan under");
+      }, function () {
+        URL.revokeObjectURL(url);
+        flashToken("could not read");
+      });
+    }
+
+    function firstImageFile(list) {
+      if (!list) return null;
+      for (let i = 0; i < list.length; i++) {
+        if (/^image\//.test(list[i].type || "")) return list[i];
+      }
+      return null;
     }
 
     function toggleUnderlay() {
@@ -1668,14 +1712,27 @@
       // Dropping a plan on the sheet is the same gesture as sliding one under
       ["dragenter", "dragover"].forEach(function (evt) {
         window.addEventListener(evt, function (e) {
-          if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") !== -1) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-          }
+          const types = (e.dataTransfer && e.dataTransfer.types) || [];
+          if (Array.prototype.indexOf.call(types, "Files") === -1) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          holdDragCue();
         });
       });
+      window.addEventListener("dragleave", holdDragCue);
+      window.addEventListener("dragend", releaseDragCue);
       window.addEventListener("drop", function (e) {
-        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        const f = firstImageFile(e.dataTransfer && e.dataTransfer.files);
+        if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+        e.preventDefault();
+        releaseDragCue();
+        if (!f) { flashToken("not an image"); return; }
+        loadUnderlayFile(f);
+      });
+
+      // Pasting a screenshot of the survey is the fastest way in
+      window.addEventListener("paste", function (e) {
+        const f = firstImageFile(e.clipboardData && e.clipboardData.files);
         if (!f) return;
         e.preventDefault();
         loadUnderlayFile(f);
@@ -1684,7 +1741,8 @@
       const fileInput = document.getElementById("underlay-file");
       if (fileInput) {
         fileInput.addEventListener("change", function () {
-          const f = fileInput.files && fileInput.files[0];
+          const f = firstImageFile(fileInput.files) ||
+            (fileInput.files && fileInput.files[0]);
           if (f) loadUnderlayFile(f);
           // Let the same file be chosen again after it is lifted out
           fileInput.value = "";

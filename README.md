@@ -76,7 +76,7 @@ The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Wat
 - `Planting` / `p` — drag a hedge; click a tree
 - `Path` / `r` — drag a stone walk
 - `Wall` / `l` — drag a wall / retaining edge
-- `Slip a plan under` / `u` — put a site plan beneath the trace; press again to lift it out. Dropping an image file anywhere on the sheet does the same. The plan is fitted inside the lot and read through the yellow sheet, so `Tone` doubles as how strongly it shows; hold `v` to lift the trace off it. It is part of the sheet, so it comes along in the export.
+- `Slip a plan under` / `u` — put a site plan beneath the trace; press again to lift it out. Dropping an image file anywhere on the sheet does the same, and so does pasting one. Anything over 2400px on its long side is scaled down on the way in. The plan is fitted inside the lot and read through the yellow sheet, so `Tone` doubles as how strongly it shows; hold `v` to lift the trace off it. It is part of the sheet, so it comes along in the export.
 - `Undo` / `z` — undo last gesture
 - `Clear the sheet` / `c` / Backspace — clear gestures; the lot stays
 - `Tone` / `d` — cream sheet or night paper
