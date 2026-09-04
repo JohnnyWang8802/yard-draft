@@ -264,7 +264,7 @@
   <div id="token"></div>
   <div id="empty">
     <div class="prompt">Lay a contour</div>
-    <div class="line">A sheet you could hang, or take.</div>
+    <div class="line">You lay roughly. An agent can finish the sheet — same paper.</div>
   </div>
   <div id="dock">
     <header id="head">
@@ -540,7 +540,7 @@
     <div id="foot">
       <nav id="actions">
         <button type="button" data-act="undo">Undo<span class="k">z</span></button>
-        <button type="button" data-act="clear">Clear<span class="k">c</span></button>
+        <button type="button" data-act="clear">Clear the sheet<span class="k">c</span></button>
         <button type="button" data-act="dark">Tone<span class="k">d</span></button>
         <button type="button" data-act="export">Take the sheet<span class="k">e</span></button>
       </nav>
@@ -2385,10 +2385,11 @@
         return {
           ok: false,
           tool: toolMode,
-          reason: "gesture not committed (need enough travel / points for this tool)",
+          reason: "gesture not committed — give the tool a fuller stroke",
           gestures: gestures.length
         };
       }
+      flashToken("laid");
       const g = gestures[gestures.length - 1];
       return {
         ok: true,
@@ -2404,29 +2405,31 @@
       if (drawing) endStroke();
       clearGestures();
       redraw();
+      flashToken("cleared");
       return { ok: true, gestures: 0 };
     }
 
     function agentExportSheet() {
       if (drawing || suppressExport) {
-        return { ok: false, reason: "busy drawing; try again when the stroke settles" };
+        return { ok: false, reason: "still drawing — wait for the stroke to settle" };
       }
       exportSheet();
+      flashToken("taken");
       return { ok: true, file: "yard-draft.png", covered: true };
     }
 
     const YARD_WEBMCP_TOOLS = [
       {
         name: "lay_contour",
-        title: "Lay contour",
-        description: "Lay a Terrain contour polyline on the Yard Draft lot. Points are 0–1 across the dashed lot (not the full window). Uses the same beautify path as a hand drag.",
+        title: "Lay a contour",
+        description: "Lay a contour on the courtyard sheet — the same Terrain stroke a hand would drag. Pass points across the dashed lot: 0 is left/top, 1 is right/bottom.",
         inputSchema: {
           type: "object",
           properties: {
             points: {
               type: "array",
               minItems: 3,
-              description: "Polyline in lot-normalized 0–1 space, left→right / top→bottom.",
+              description: "Stroke points across the dashed lot (0 left/top → 1 right/bottom).",
               items: {
                 type: "object",
                 properties: {
@@ -2445,14 +2448,14 @@
       {
         name: "lay_water",
         title: "Lay water",
-        description: "Lay Water on the lot: an open polyline becomes a rill; a returning loop that encloses becomes a pool. Points are 0–1 in lot space.",
+        description: "Lay water on the sheet. An open stroke reads as a rill; bring the ends back to hold a pool. Same paper as a hand Water stroke. Points: 0 left/top → 1 right/bottom inside the dashed lot.",
         inputSchema: {
           type: "object",
           properties: {
             points: {
               type: "array",
               minItems: 3,
-              description: "Open rill or closed basin polyline in lot-normalized 0–1 space.",
+              description: "Water stroke across the dashed lot (0 left/top → 1 right/bottom).",
               items: {
                 type: "object",
                 properties: {
@@ -2471,14 +2474,14 @@
       {
         name: "lay_planting",
         title: "Lay planting",
-        description: "Lay Planting on the lot. One point (or a tiny cluster) plants a tree; a longer polyline lays a hedge. Points are 0–1 in lot space.",
+        description: "Lay planting on the sheet. One quiet point sets a tree; a longer stroke lays a hedge. Same as a hand Planting. Points: 0 left/top → 1 right/bottom inside the dashed lot.",
         inputSchema: {
           type: "object",
           properties: {
             points: {
               type: "array",
               minItems: 1,
-              description: "Tree click = 1 point; hedge = polyline. Lot-normalized 0–1.",
+              description: "One point for a tree; a stroke for a hedge (0 left/top → 1 right/bottom).",
               items: {
                 type: "object",
                 properties: {
@@ -2496,15 +2499,15 @@
       },
       {
         name: "lay_path",
-        title: "Lay path",
-        description: "Lay a Path / stone walk polyline on the lot. Points are 0–1 in lot space. Same densify→beautify path as a hand L.",
+        title: "Lay a path",
+        description: "Lay a stone walk on the sheet — the same Path stroke a hand would drag, corners kept. Points: 0 left/top → 1 right/bottom inside the dashed lot.",
         inputSchema: {
           type: "object",
           properties: {
             points: {
               type: "array",
               minItems: 3,
-              description: "Walk polyline in lot-normalized 0–1 space.",
+              description: "Walk stroke across the dashed lot (0 left/top → 1 right/bottom).",
               items: {
                 type: "object",
                 properties: {
@@ -2522,15 +2525,15 @@
       },
       {
         name: "lay_wall",
-        title: "Lay wall",
-        description: "Lay a Wall / edge on the lot. Open polyline = wall run; boxy loop = enclosure. Points are 0–1 in lot space.",
+        title: "Lay a wall",
+        description: "Lay a wall or edge on the sheet. An open stroke is a run; a boxy loop holds an enclosure. Same as a hand Wall. Points: 0 left/top → 1 right/bottom inside the dashed lot.",
         inputSchema: {
           type: "object",
           properties: {
             points: {
               type: "array",
               minItems: 3,
-              description: "Wall polyline in lot-normalized 0–1 space.",
+              description: "Wall stroke across the dashed lot (0 left/top → 1 right/bottom).",
               items: {
                 type: "object",
                 properties: {
@@ -2548,8 +2551,8 @@
       },
       {
         name: "clear_sheet",
-        title: "Clear sheet",
-        description: "Clear every gesture on the Yard Draft sheet. The dashed lot, north mark, and scale stay. Same as Clear / c.",
+        title: "Clear the sheet",
+        description: "Clear every gesture from the courtyard sheet. The dashed lot, north mark, and scale stay. Same as Clear the sheet / c.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: false, consequentialHint: true },
         execute: async function () { return agentClearSheet(); }
@@ -2557,7 +2560,7 @@
       {
         name: "export_sheet",
         title: "Take the sheet",
-        description: "Export the covered hangable sheet as yard-draft.png (vellum down). Same as Take the sheet / e. Does not lift the yellow paper.",
+        description: "Take the covered hangable sheet as yard-draft.png — vellum down, ready to hang. Same as Take the sheet / e.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         annotations: { readOnlyHint: true },
         execute: async function () { return agentExportSheet(); }
