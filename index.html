@@ -1679,66 +1679,99 @@
       });
     }
 
-    function remapGestures(from, to) {
-      // Gestures are stored in absolute canvas coordinates, so resizing the
-      // window used to leave everything sitting where the old lot was — half
-      // the sheet ended up outside the property line. Carry the drawing with
-      // the lot, uniformly so nothing is squashed.
-      if (!gestures.length) return;
-      if (!from || !(from.w > 0) || !(from.h > 0)) return;
-      if (!(to.w > 0) || !(to.h > 0)) return;
-      // Scale by the lot's constraining side, not by a fit-inside min of the
-      // two ratios: that is not reversible, so wide -> tall -> wide shrank the
-      // drawing every time instead of returning it to its own size.
-      const s = Math.min(to.w, to.h) / Math.min(from.w, from.h);
-      if (!isFinite(s) || s <= 0) return;
-      const fcx = from.x + from.w / 2;
-      const fcy = from.y + from.h / 2;
-      const tcx = to.x + to.w / 2;
-      const tcy = to.y + to.h / 2;
-      const mapX = function (x) { return tcx + (x - fcx) * s; };
-      const mapY = function (y) { return tcy + (y - fcy) * s; };
-      const mapList = function (list) {
-        if (!list) return;
-        for (let i = 0; i < list.length; i++) {
-          const nx = mapX(list[i][0]);
-          const ny = mapY(list[i][1]);
-          list[i][0] = nx;
-          list[i][1] = ny;
-        }
+    function snapshotGesture(g) {
+      // Remember the lot the gesture was drawn in, and its geometry as drawn.
+      // Every later resize is computed from this original, so repeated
+      // resizes cannot compound: the drawing returns to exactly its own
+      // coordinates whenever the lot returns to its own shape.
+      const copyList = function (list) {
+        return list ? list.map(function (p) { return [p[0], p[1]]; }) : null;
       };
+      const copyMarks = function (list) {
+        return list ? list.map(function (m) { return Object.assign({}, m); }) : null;
+      };
+      g.lotRef = { x: lot.x, y: lot.y, w: lot.w, h: lot.h };
+      g.base = {
+        pts: copyList(g.pts),
+        handSrc: copyList(g.handSrc),
+        joints: copyList(g.joints),
+        clumps: copyMarks(g.clumps),
+        corners: copyMarks(g.corners),
+        x: g.x,
+        y: g.y,
+        r: g.r,
+        halfW: g.halfW,
+        spacing: g.spacing
+      };
+    }
+
+    function remapGestures(to) {
+      // Gestures are stored in absolute canvas coordinates, so without this a
+      // resize left the drawing where the old lot was and half the sheet ended
+      // up outside the property line.
+      //
+      // Each gesture keeps its own place in the lot (its centroid in lot-
+      // relative terms) and is scaled about that centroid by a single factor,
+      // so nothing is stretched into an ellipse and nothing grows past the
+      // property line: the factor is the smaller of the two side ratios.
+      if (!gestures.length || !(to.w > 0) || !(to.h > 0)) return;
       for (let i = 0; i < gestures.length; i++) {
         const g = gestures[i];
-        mapList(g.pts);
-        mapList(g.handSrc);
-        // stampHand aliases hand to handSrc for one-point gestures
-        if (g.hand !== g.handSrc) mapList(g.hand);
-        mapList(g.joints);
-        if (g.clumps) {
-          for (let c = 0; c < g.clumps.length; c++) {
-            const cl = g.clumps[c];
-            const nx = mapX(cl.x);
-            const ny = mapY(cl.y);
-            cl.x = nx;
-            cl.y = ny;
-            cl.r *= s;
+        const from = g.lotRef;
+        const base = g.base;
+        if (!from || !base || !(from.w > 0) || !(from.h > 0)) continue;
+        const s = Math.min(to.w / from.w, to.h / from.h);
+        if (!isFinite(s) || s <= 0) continue;
+
+        let cx = base.x;
+        let cy = base.y;
+        if (cx == null || cy == null) {
+          const src = base.pts && base.pts.length ? base.pts : base.handSrc;
+          if (!src || !src.length) continue;
+          cx = 0;
+          cy = 0;
+          for (let k = 0; k < src.length; k++) {
+            cx += src[k][0];
+            cy += src[k][1];
           }
+          cx /= src.length;
+          cy /= src.length;
         }
-        if (g.corners) {
-          for (let c = 0; c < g.corners.length; c++) {
-            const co = g.corners[c];
-            const nx = mapX(co.x);
-            const ny = mapY(co.y);
-            co.x = nx;
-            co.y = ny;
-          }
+        const ncx = to.x + ((cx - from.x) / from.w) * to.w;
+        const ncy = to.y + ((cy - from.y) / from.h) * to.h;
+        const mapX = function (x) { return ncx + (x - cx) * s; };
+        const mapY = function (y) { return ncy + (y - cy) * s; };
+        const mapList = function (src) {
+          return src ? src.map(function (p) { return [mapX(p[0]), mapY(p[1])]; }) : null;
+        };
+
+        if (base.pts) g.pts = mapList(base.pts);
+        if (base.handSrc) g.handSrc = mapList(base.handSrc);
+        if (base.joints) g.joints = mapList(base.joints);
+        if (base.clumps) {
+          g.clumps = base.clumps.map(function (c) {
+            const n = Object.assign({}, c);
+            n.x = mapX(c.x);
+            n.y = mapY(c.y);
+            n.r = c.r * s;
+            return n;
+          });
         }
-        if (g.x != null) g.x = mapX(g.x);
-        if (g.y != null) g.y = mapY(g.y);
-        if (g.r != null) g.r *= s;
-        if (g.halfW != null) g.halfW *= s;
-        if (g.spacing != null) g.spacing *= s;
+        if (base.corners) {
+          g.corners = base.corners.map(function (c) {
+            const n = Object.assign({}, c);
+            n.x = mapX(c.x);
+            n.y = mapY(c.y);
+            return n;
+          });
+        }
+        if (base.x != null) g.x = mapX(base.x);
+        if (base.y != null) g.y = mapY(base.y);
+        if (base.r != null) g.r = base.r * s;
+        if (base.halfW != null) g.halfW = base.halfW * s;
+        if (base.spacing != null) g.spacing = base.spacing * s;
       }
+      refreshHands();
     }
 
     function invalidateSheetCache() {
@@ -1892,14 +1925,13 @@
     }
 
     function windowResized() {
-      const prevLot = { x: lot.x, y: lot.y, w: lot.w, h: lot.h };
       resizeCanvas(windowWidth, windowHeight);
       // p5.brush sizes its blend source framebuffer in load(). Without a reload
       // it keeps the old canvas dimensions after a resize and the composite
       // pass writes stale blocks of the previous sheet back onto the paper.
       if (typeof brush.load === "function") brush.load();
       layoutLot();
-      remapGestures(prevLot, lot);
+      remapGestures(lot);
       markSheetChanged();
       requestAnalog();
     }
@@ -2057,6 +2089,7 @@
           gestures.push(tree);
           if (agentPending) tree.agent = true;
         }
+        for (let i = beforeCount; i < gestures.length; i++) snapshotGesture(gestures[i]);
         if (gestures.length !== beforeCount) markSheetChanged();
         showEmpty();
         return;
@@ -2173,6 +2206,7 @@
       if (agentPending) {
         for (let i = beforeCount; i < gestures.length; i++) gestures[i].agent = true;
       }
+      for (let i = beforeCount; i < gestures.length; i++) snapshotGesture(gestures[i]);
       if (gestures.length !== beforeCount) markSheetChanged();
       showEmpty();
     }
