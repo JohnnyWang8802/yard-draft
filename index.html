@@ -717,8 +717,12 @@
     let passSeed = 1400;
     let analogDirty = true;
     let sheetCache = null;
+    let bakedUpTo = 0;
     let lastSettleAnalog = 0;
+    let sheetRev = 0;
+    let settledRev = -1;
     const SETTLE_ANALOG_MIN = 1500;
+    const ANALOG_MAX = 10;
     let brushesScaled = false;
     let B = {};
     let lot = {};
@@ -760,7 +764,7 @@
       const sl = document.getElementById("vellum-alpha");
       if (sl && Number(sl.value) !== vellumAlpha) sl.value = String(vellumAlpha);
       // Paper alpha is live (not in stroke cache) — no invalidate
-      redraw();
+      paintNow();
       if (flash) flashAlphaPct();
     }
     let bakingWorld = false;
@@ -776,6 +780,8 @@
     const VIEW_ZMIN = 0.5;
     const VIEW_ZMAX = 2.5;
     const DOT_STEP = 14;
+    let dotLayer = null;
+    let dotLayerKey = "";
 
     function lotCenter() {
       return [lot.x + lot.w * 0.5, lot.y + lot.h * 0.5];
@@ -981,15 +987,12 @@
 
     function shape(pts, closed, curve) {
       if (!pts || pts.length < 2) return;
-      if (!closed) {
-        for (let i = 1; i < pts.length; i++) {
-          brush.line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
-        }
-        return;
-      }
+      // An open path used to be one brush stroke per segment: every joint got
+      // re-inked, so lines read blotchy and dark at the seams and cost one
+      // stroke pass each. One shape draws the whole path in a single pass.
       brush.beginShape(curve == null ? 0.32 : curve);
       for (let i = 0; i < pts.length; i++) brush.vertex(pts[i][0], pts[i][1]);
-      brush.endShape(true);
+      brush.endShape(!!closed);
     }
 
     function pickBrush(box, names) {
@@ -1445,23 +1448,29 @@
       strokeLock = false;
       mode = name;
       updateCaption();
-      requestAnalog();
+      // Switching tools changes nothing already on the sheet — keep the cache
+      paintNow();
     }
 
     function toggleDark() {
       dark = !dark;
+      markSheetChanged();
       document.body.classList.toggle("dark", dark);
       requestAnalog();
     }
 
     function undoLast() {
+      if (!gestures.length) return;
       gestures.pop();
+      markSheetChanged();
       showEmpty();
       requestAnalog();
     }
 
     function clearGestures() {
+      if (!gestures.length) return;
       gestures = [];
+      markSheetChanged();
       showEmpty();
       requestAnalog();
     }
@@ -1479,11 +1488,10 @@
       viewPanX = 0;
       viewPanY = 0;
       // Minimal: blit world cache at identity — do NOT invalidate (avoids full brush replay)
-      if (sheetCache) {
-        composeViewport(null);
-      } else {
-        redraw();
-      }
+      // Synchronous compose — saveCanvas grabs the buffer now, and an async
+      // paintNow() would still be queued when it does.
+      if (!sheetCache) bakeWorldCache();
+      composeViewport(null);
       saveCanvas("yard-draft", "png");
       vellumKey = holdKey;
       deskLift = holdDesk;
@@ -1491,7 +1499,7 @@
       viewPanX = holdPX;
       viewPanY = holdPY;
       // Restore on-screen view via blit; cache still valid
-      redraw();
+      paintNow();
     }
 
     function showEmpty() {
@@ -1568,14 +1576,59 @@
       lot.scaleY = lot.y + lot.h + Math.max(16, pad * 0.32);
     }
 
+    function freeCachedImage(img) {
+      // p5's WEBGL renderer keeps a texture per p5.Image in a Map that is never
+      // pruned, so every settle bake used to upload a fresh lot-sized texture
+      // and leak the previous one — memory and frame time grew all session.
+      if (!img) return;
+      try {
+        const inst = (window.self && window.self.p5) ? window.self.p5.instance : null;
+        const r = (inst && inst._renderer) ? inst._renderer : null;
+        if (r && r.textures && r.textures.get) {
+          const tex = r.textures.get(img);
+          if (tex) {
+            if (typeof tex.remove === "function") tex.remove();
+            r.textures.delete(img);
+          }
+        }
+      } catch (err) {}
+    }
+
+    // p5 2's redraw() is async and returns immediately when a draw is already
+    // in flight, so a second redraw() in the same tick was silently dropped —
+    // a committed stroke could simply never reach the screen. Serialise them
+    // and always run one more pass when a request arrived mid-draw.
+    let painting = false;
+    let paintAgain = false;
+
+    function paintNow() {
+      if (painting) { paintAgain = true; return; }
+      painting = true;
+      let pending = null;
+      try { pending = redraw(); } catch (err) { pending = null; }
+      Promise.resolve(pending).catch(function () {}).then(function () {
+        painting = false;
+        if (paintAgain) {
+          paintAgain = false;
+          requestAnimationFrame(paintNow);
+        }
+      });
+    }
+
     function invalidateSheetCache() {
+      freeCachedImage(sheetCache);
       sheetCache = null;
+      bakedUpTo = 0;
+    }
+
+    function markSheetChanged() {
+      sheetRev += 1;
     }
 
     function requestAnalog() {
       analogDirty = true;
       invalidateSheetCache();
-      redraw();
+      paintNow();
     }
 
     function armSettle() {
@@ -1589,13 +1642,29 @@
         settleTimer = null;
         const now = millis();
         // Throttle full analog settle; between that just blit cache + glyph
-        if (now - lastSettleAnalog >= SETTLE_ANALOG_MIN) {
+        // Retrace the analog pass once per change. Without this, simply moving
+        // the cursor over the sheet re-brushed every gesture every 1.5s forever.
+        // Replaying every stroke costs ~60ms per gesture, so a busy sheet would
+        // freeze for seconds on each settle. Past ANALOG_MAX the sheet keeps the
+        // jitter it was committed with instead of retracing.
+        if (sheetRev !== settledRev && gestures.length <= ANALOG_MAX &&
+            now - lastSettleAnalog >= SETTLE_ANALOG_MIN) {
           lastSettleAnalog = now;
+          settledRev = sheetRev;
           requestAnalog();
         } else {
-          redraw();
+          paintNow();
         }
       }, SETTLE_MS);
+    }
+
+    function hasWebGL1() {
+      try {
+        const probe = document.createElement("canvas");
+        return !!(probe.getContext("webgl") || probe.getContext("experimental-webgl"));
+      } catch (err) {
+        return false;
+      }
     }
 
     function setup() {
@@ -1603,7 +1672,10 @@
       // TypeError: _renderer._setAttributes is not a function
       // and the canvas stays 100x100 blank. This vendor already
       // defaults preserveDrawingBuffer to true.
-      createCanvas(windowWidth, windowHeight, WEBGL);
+      // Some browsers (and embedded webviews) expose WebGL2 only. p5's WEBGL
+      // constant asks for a WebGL1 context, so the sketch would never start
+      // and the sheet stayed blank. Pick the mode the host can actually give.
+      createCanvas(windowWidth, windowHeight, hasWebGL1() ? WEBGL : WEBGL2);
       pixelDensity(1);
       angleMode(DEGREES);
       if (!brushesScaled) {
@@ -1648,7 +1720,7 @@
           if (!drawing && onDesk(xy[0], xy[1])) {
             deskLift = true;
             invalidateSheetCache();
-            redraw();
+            paintNow();
             return;
           }
           if (beginStroke(e) && e.pointerId != null && cnv.setPointerCapture) {
@@ -1663,7 +1735,7 @@
             panLastY = mouseY;
             viewPanX += dx;
             viewPanY += dy;
-            redraw();
+            paintNow();
             return;
           }
           if (!drawing) return;
@@ -1675,13 +1747,13 @@
             if (e.pointerId != null && cnv.releasePointerCapture) {
               try { cnv.releasePointerCapture(e.pointerId); } catch (err) {}
             }
-            redraw();
+            paintNow();
             return;
           }
           if (deskLift) {
             deskLift = false;
             invalidateSheetCache();
-            redraw();
+            paintNow();
           }
           if (!drawing) return;
           endStroke(e);
@@ -1689,13 +1761,16 @@
             try { cnv.releasePointerCapture(e.pointerId); } catch (err) {}
           }
         }
-        cnv.addEventListener("pointerdown", onCnvDown, true);
-        cnv.addEventListener("pointermove", onCnvMove, true);
-        cnv.addEventListener("pointerup", onCnvUp, true);
-        cnv.addEventListener("pointercancel", onCnvUp, true);
-        cnv.addEventListener("mousedown", onCnvDown, true);
-        cnv.addEventListener("mousemove", onCnvMove, true);
-        cnv.addEventListener("mouseup", onCnvUp, true);
+        if (typeof window.PointerEvent === "function") {
+          cnv.addEventListener("pointerdown", onCnvDown, true);
+          cnv.addEventListener("pointermove", onCnvMove, true);
+          cnv.addEventListener("pointerup", onCnvUp, true);
+          cnv.addEventListener("pointercancel", onCnvUp, true);
+        } else {
+          cnv.addEventListener("mousedown", onCnvDown, true);
+          cnv.addEventListener("mousemove", onCnvMove, true);
+          cnv.addEventListener("mouseup", onCnvUp, true);
+        }
         cnv.addEventListener("contextmenu", function (e) { e.preventDefault(); }, true);
         cnv.addEventListener("auxclick", function (e) { if (e.button === 1) e.preventDefault(); }, true);
       }
@@ -1705,6 +1780,7 @@
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
       layoutLot();
+      markSheetChanged();
       requestAnalog();
     }
 
@@ -1724,7 +1800,7 @@
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
       // Ensure committed sheet is cached before live drag (no per-frame full redraw)
       if (!sheetCache) {
-        redraw();
+        paintNow();
       }
       drawing = true;
       suppressExport = true;
@@ -1733,7 +1809,7 @@
       liveT0 = millis();
       lastDragDraw = 0;
       // Do NOT loop() — sampleLive throttles redraw; sheetCache avoids re-brushing history
-      redraw();
+      paintNow();
       return true;
     }
 
@@ -1746,7 +1822,7 @@
       const now = millis();
       if (now - lastDragDraw >= 28) {
         lastDragDraw = now;
-        redraw();
+        paintNow();
       }
     }
 
@@ -1789,10 +1865,9 @@
       commitLive(pts);
       flashTracing();
       noLoop();
-      requestAnalog();
-      redraw();
+      paintNow();
       armSettle();
-      setTimeout(function () { redraw(); }, 0);
+      setTimeout(function () { paintNow(); }, 0);
       setTimeout(function () { suppressExport = false; strokeLock = false; }, 120);
     }
 
@@ -1808,7 +1883,7 @@
         panLastY = mouseY;
         viewPanX += dx;
         viewPanY += dy;
-        redraw();
+        paintNow();
         return false;
       }
       if (drawing) {
@@ -1862,6 +1937,7 @@
           gestures.push(tree);
           if (agentPending) tree.agent = true;
         }
+        if (gestures.length !== beforeCount) markSheetChanged();
         showEmpty();
         return;
       }
@@ -1975,6 +2051,7 @@
       if (agentPending) {
         for (let i = beforeCount; i < gestures.length; i++) gestures[i].agent = true;
       }
+      if (gestures.length !== beforeCount) markSheetChanged();
       showEmpty();
     }
 
@@ -1985,7 +2062,7 @@
         if (drawing) return;
         vellumKey = true;
         invalidateSheetCache();
-        redraw();
+        paintNow();
         return false;
       }
       if (drawing && k !== "e") return;
@@ -2007,12 +2084,12 @@
     }
 
     function keyReleased() {
-      if (key === " " || keyCode === 32) { spaceHeld = false; if (panning) { panning = false; redraw(); } return false; }
+      if (key === " " || keyCode === 32) { spaceHeld = false; if (panning) { panning = false; paintNow(); } return false; }
       const k = (key || "").toLowerCase();
       if (k === "v") {
         vellumKey = false;
         invalidateSheetCache();
-        redraw();
+        paintNow();
         return false;
       }
     }
@@ -2027,8 +2104,12 @@
       return true;
     }
 
-    function bakeWorldCache() {
+    function bakeWorldCache(incremental) {
       // Bake ink only at zoom=1 — no tray/paper (keeps alpha so dots show through yellow)
+      // `incremental`: keep the strokes already in the cache and ink only the
+      // gestures added since. Laying a stroke used to re-brush the whole sheet,
+      // so every new mark got slower than the last.
+      const append = !!(incremental && sheetCache && gestures.length > bakedUpTo);
       const hz = viewZoom;
       const hx = viewPanX;
       const hy = viewPanY;
@@ -2042,39 +2123,73 @@
         clear();
         resetBrush();
         bakingWorld = true;
-        drawInkLayers();
+        if (append) {
+          blitWorldCache();
+          resetBrush();
+          drawGestureRange(bakedUpTo);
+        } else {
+          drawInkLayers();
+        }
         bakingWorld = false;
         pop();
         resetBrush();
-        sheetCache = get(lot.x, lot.y, lot.w, lot.h);
+        const fresh = get(lot.x, lot.y, lot.w, lot.h);
+        freeCachedImage(sheetCache);
+        sheetCache = fresh;
+        bakedUpTo = gestures.length;
       } catch (err) {
+        if (window.console && console.warn) console.warn("[Yard Draft] bake failed", err);
+        freeCachedImage(sheetCache);
         sheetCache = null;
+        bakedUpTo = 0;
       }
       viewZoom = hz;
       viewPanX = hx;
       viewPanY = hy;
     }
 
-    function drawDotGrid() {
-      // Desk black dots (WEBGL-safe circles). Show through translucent yellow paper.
-      push();
-      noStroke();
-      const ink = color(pal("ink"));
+    function buildDotLayer() {
+      // The desk lattice is thousands of dots. Drawn live it cost thousands of
+      // WEBGL draw calls per frame; it only changes on resize or tone, so bake
+      // it once into a 2D layer and blit that.
+      if (dotLayer) {
+        freeCachedImage(dotLayer);
+        if (typeof dotLayer.remove === "function") dotLayer.remove();
+        dotLayer = null;
+      }
+      const g = createGraphics(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)));
+      g.pixelDensity(1);
+      g.clear();
+      g.noStroke();
+      const ink = g.color(pal("ink"));
       ink.setAlpha(dark ? 56 : 51); // ~0.20–0.22
-      fill(ink);
+      g.fill(ink);
       const x0 = DOCK_W + 8;
       for (let x = x0; x < width; x += DOT_STEP) {
         for (let y = 10; y < height; y += DOT_STEP) {
-          circle(x, y, 1.35);
+          g.circle(x, y, 1.35);
         }
       }
+      dotLayer = g;
+      dotLayerKey = dotKey();
+    }
+
+    function dotKey() {
+      return Math.round(width) + "x" + Math.round(height) + ":" + (dark ? 1 : 0);
+    }
+
+    function drawDotGrid() {
+      // Desk black dots. Show through translucent yellow paper.
+      if (!dotLayer || dotLayerKey !== dotKey()) buildDotLayer();
+      if (!dotLayer) return;
+      push();
+      imageMode(CORNER);
+      image(dotLayer, 0, 0, width, height);
       pop();
     }
 
-    function drawInkLayers() {
-      // Soft lot ticks + gestures — no paper/tray (baked into stroke cache)
-      drawLot();
-      for (let i = 0; i < gestures.length; i++) {
+    function drawGestureRange(start) {
+      for (let i = start; i < gestures.length; i++) {
         const hg = gestures[i];
         if (hg.agent) {
           push();
@@ -2084,7 +2199,7 @@
         } else drawHandLayer(hg);
       }
       if (!vellumLifted()) {
-        for (let i = 0; i < gestures.length; i++) {
+        for (let i = start; i < gestures.length; i++) {
           const rg = gestures[i];
           if (rg.agent) {
             push();
@@ -2094,6 +2209,12 @@
           } else renderGesture(rg);
         }
       }
+    }
+
+    function drawInkLayers() {
+      // Soft lot ticks + gestures — no paper/tray (baked into stroke cache)
+      drawLot();
+      drawGestureRange(0);
     }
 
     function drawLotPaper() {
@@ -2154,7 +2275,8 @@
       noiseSeed(passSeed);
 
       // Fast path: world cache + live / glyph (zoom/pan never invalidate cache)
-      if (sheetCache && !analogDirty) {
+      const cacheCurrent = sheetCache && gestures.length <= bakedUpTo;
+      if (cacheCurrent && !analogDirty) {
         if (drawing && livePts) {
           composeViewport(function () { drawLivePreview(); });
           return;
@@ -2171,6 +2293,14 @@
           composeViewport(null);
           return;
         }
+      }
+
+      // Only new gestures since the last bake: ink just those onto the cache
+      if (sheetCache && !analogDirty && !drawing && !panning &&
+          gestures.length > bakedUpTo && !(livePts && livePts.length) && bakedUpTo > 0) {
+        bakeWorldCache(true);
+        composeViewport(hasPtr ? function () { drawHandGlyph(); } : null);
+        return;
       }
 
       // Cache miss / settle: full world draw at current view, then bake identity
@@ -2212,7 +2342,7 @@
       viewPanX = sx - c[0] - (wx - c[0]) * viewZoom;
       viewPanY = sy - c[1] - (wy - c[1]) * viewZoom;
       // Do NOT invalidate world cache — blit only
-      redraw();
+      paintNow();
       return false;
     }
 
@@ -2243,9 +2373,10 @@
       stroke(col);
       strokeWeight(2);
       noFill();
-      for (let i = 1; i < livePts.length; i++) {
-        line(livePts[i - 1][0], livePts[i - 1][1], livePts[i][0], livePts[i][1]);
-      }
+      // A drag can hold hundreds of samples — one shape, not one call per segment
+      beginShape();
+      for (let i = 0; i < livePts.length; i++) vertex(livePts[i][0], livePts[i][1]);
+      endShape();
     }
 
     function dashRect(x, y, w, h, dashLen, gapLen) {
@@ -2256,6 +2387,8 @@
         [[x + w, y + h], [x, y + h]],
         [[x, y + h], [x, y]]
       ];
+      // One LINES shape instead of one draw call per dash
+      beginShape(LINES);
       for (let e = 0; e < edges.length; e++) {
         const a = edges[e][0];
         const b = edges[e][1];
@@ -2269,12 +2402,14 @@
         while (pos < len) {
           const seg = Math.min(draw ? dashLen : gapLen, len - pos);
           if (draw) {
-            line(a[0] + ux * pos, a[1] + uy * pos, a[0] + ux * (pos + seg), a[1] + uy * (pos + seg));
+            vertex(a[0] + ux * pos, a[1] + uy * pos);
+            vertex(a[0] + ux * (pos + seg), a[1] + uy * (pos + seg));
           }
           pos += seg;
           draw = !draw;
         }
       }
+      endShape();
     }
 
     function drawLotBorder() {
@@ -2911,9 +3046,9 @@
       }
       showEmpty();
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
-      // No forced full-history analog — commit already stamped hand; one redraw + cache bake
-      invalidateSheetCache();
-      redraw();
+      // No forced full-history analog — commit already stamped hand; the new
+      // gesture is inked onto the existing cache on the next pass.
+      paintNow();
       mode = prev;
       updateCaption();
       const added = gestures.length - before;
@@ -2941,7 +3076,7 @@
     function agentClearSheet() {
       if (drawing) endStroke();
       clearGestures();
-      redraw();
+      paintNow();
       flashToken("cleared");
       flashToolRail('[data-act="clear"]');
       return { ok: true, gestures: 0 };
