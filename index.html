@@ -64,9 +64,13 @@
       border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
       color: var(--ink);
     }
-    #head .mark .sheet { fill: #E8CC6A; }
+    /* Naples yellow — the lowest chroma that still reads as yellow at 20px.
+       The sheet itself is laid at 55% over white, so it presents about
+       #F2E3AD on screen; the mark at full vellum was louder than the paper
+       it stands for. */
+    #head .mark .sheet { fill: #E0C486; }
     #head .mark .ink { fill: #2c281f; }
-    body.dark #head .mark .sheet { fill: #C9A63A; }
+    body.dark #head .mark .sheet { fill: #C2A05E; }
     body.dark #head .mark .ink { fill: #1A1A1A; }
     #head .mark {
       flex-shrink: 0;
