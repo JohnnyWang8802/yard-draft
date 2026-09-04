@@ -6,19 +6,21 @@
   <title>Yard Draft</title>
   <style>
     :root {
-      --paper: #efe6d0;
+      --paper: #EFE6D0;
       --tray:  #FFFFFF;
       --ink:   #2c281f;
       --olive: #55613a;
       --terra: #8f4e38;
       --water: #6e7f86;
-      --mute:  rgba(44,40,31,0.55);
+      --mute:  rgba(44,40,31,0.48);
+      --sheet-shadow: rgba(44,40,31,0.06);
     }
     body.dark {
       --paper: #1A1A1A;
       --tray:  #111111;
       --ink:   #efe6d0;
-      --mute:  rgba(239,230,208,0.55);
+      --mute:  rgba(239,230,208,0.48);
+      --sheet-shadow: rgba(0,0,0,0.35);
     }
     html, body {
       margin: 0;
@@ -41,9 +43,10 @@
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      padding: 16px 14px 18px;
+      padding: 18px 14px 20px;
       background: var(--tray);
-      border-right: 1px solid var(--ink);
+      border-right: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+      box-shadow: 4px 0 24px var(--sheet-shadow);
       color: var(--ink);
       overflow-y: auto;
       user-select: none;
@@ -56,7 +59,9 @@
       gap: 10px;
       height: 36px;
       width: 204px;
-      margin-bottom: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
       color: var(--ink);
     }
     #head .mark {
@@ -84,13 +89,13 @@
       align-items: center;
       gap: 12px;
       width: 100%;
-      height: 56px;
+      height: 60px;
       box-sizing: border-box;
       margin: 0 0 4px;
       padding: 8px 10px;
       background: transparent;
       border: none;
-      border-radius: 0;
+      border-radius: 8px;
       box-shadow: none;
       appearance: none;
       -webkit-appearance: none;
@@ -98,18 +103,22 @@
       color: var(--ink);
       cursor: pointer;
       font-family: inherit;
+      opacity: 1;
+      transition: background 120ms ease;
     }
-    .tool:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+    .tool:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
     .tool:focus { outline: none; }
     .tool:focus-visible { box-shadow: inset 0 0 0 1px var(--ink); }
     .tool.on {
       background: var(--ink);
       color: var(--paper);
+      opacity: 1;
     }
-    .tool.on:hover { background: var(--ink); }
+    .tool.on:hover { background: var(--ink); opacity: 1; }
     .tool.flash {
       background: var(--ink);
       color: var(--paper);
+      opacity: 1;
     }
     .tool.flash .name { color: var(--paper); opacity: 1; }
     .tool.flash .k { display: inline; color: var(--paper); }
@@ -131,7 +140,7 @@
       line-height: 1.1;
       display: block;
       color: var(--ink);
-      opacity: 0.82;
+      opacity: 0.90;
     }
     .tool.on .name {
       color: var(--paper);
@@ -183,8 +192,8 @@
       width: 100%;
       flex-shrink: 0;
       margin-top: auto;
-      padding-top: 8px;
-      border-top: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
     }
     #actions button {
       display: flex;
@@ -202,11 +211,17 @@
       appearance: none;
       -webkit-appearance: none;
       font-size: 12px;
+      font-weight: 400;
       letter-spacing: 0.03em;
       color: var(--ink);
       cursor: pointer;
       font-family: inherit;
       text-align: left;
+    }
+    #actions button[data-act="clear"],
+    #actions button[data-act="export"] {
+      font-weight: 500;
+      letter-spacing: 0.02em;
     }
     #actions button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
     #actions button:focus { outline: none; }
@@ -233,16 +248,19 @@
     }
     #empty.off { display: none; }
     #empty .prompt {
-      font-size: 15px;
+      font-size: 16px;
       letter-spacing: 0.04em;
       color: var(--ink);
-      opacity: 0.22;
+      opacity: 0.32;
       pointer-events: none;
     }
     #empty .line {
-      font-size: 12px;
+      font-size: 13.5px;
       color: var(--ink);
-      opacity: 0.18;
+      opacity: 0.34;
+      margin-top: 9px;
+      max-width: 28em;
+      text-align: center;
       pointer-events: none;
     }
     #webmcp-pill {
@@ -252,24 +270,25 @@
       transform: translateX(-50%);
       z-index: 16;
       pointer-events: none;
-      padding: 7px 14px;
+      padding: 5px 11px;
       border-radius: 999px;
       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-      font-size: 12px;
-      letter-spacing: 0.02em;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      font-weight: 400;
       color: var(--ink);
-      background: color-mix(in srgb, var(--paper) 72%, transparent);
-      border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
-      box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
+      background: color-mix(in srgb, var(--paper) 55%, transparent);
+      border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+      box-shadow: none;
       opacity: 0;
       visibility: hidden;
       transition: opacity 200ms ease, visibility 200ms ease;
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       white-space: nowrap;
     }
     #webmcp-pill.on {
-      opacity: 0.78;
+      opacity: 0.52;
       visibility: visible;
     }
     body.dark #webmcp-pill {
@@ -1361,7 +1380,8 @@
       const m = Math.min(width, height);
       const pad = m * 0.08;
       lot.pad = pad;
-      lot.x = dockW + pad * 0.55;
+      // Even desk margins so the sheet feels centered on the tray
+      lot.x = dockW + pad;
       lot.y = pad;
       lot.w = width - lot.x - pad;
       lot.h = height - pad * 2;
@@ -1827,6 +1847,14 @@
 
     function drawLot() {
       noStroke();
+      // Soft desk→paper lift (breathing), no CAD chrome
+      fill(0, 0, 0, 18);
+      beginShape();
+      vertex(lot.x + 5, lot.y + 7);
+      vertex(lot.x + lot.w + 5, lot.y + 7);
+      vertex(lot.x + lot.w + 5, lot.y + lot.h + 7);
+      vertex(lot.x + 5, lot.y + lot.h + 7);
+      endShape(CLOSE);
       fill(pal("paper"));
       beginShape();
       vertex(lot.x, lot.y);
@@ -1866,21 +1894,21 @@
     }
 
     function drawNorthScale() {
-      resetBrush();
-      analogTooth();
-      const L = lot.minS * 0.072;
+      // Crisp, judge-readable marks (non-brush). Slight north bias 8–12°.
+      // No compass rose, no tip crossbar, no numerals on the scale.
+      const L = lot.minS * 0.09;
       const rot = random(8, 12);
       const ux = sin(rot);
       const uy = -cos(rot);
-      const nS = 14;
+      const nS = 16;
       const lotRight = lot.x + lot.w;
       const lotBot = lot.y + lot.h;
       let tipX = lot.northX;
       let tipY = lot.northY;
       let tailX = tipX - ux * L;
       let tailY = tipY - uy * L;
-      const open = random(34, 42);
-      const arm = 0.32 * L;
+      const open = 40;
+      const arm = 0.36 * L;
       const bx = -ux;
       const by = -uy;
       const oc = cos(open);
@@ -1889,62 +1917,62 @@
       let a1y = tipY + (bx * os + by * oc) * arm;
       let a2x = tipX + (bx * oc + by * os) * arm;
       let a2y = tipY + (-bx * os + by * oc) * arm;
-      const nX0 = tipX + 10 - 0.14 * nS;
-      const minX = Math.min(tipX, tailX, a1x, a2x, nX0);
+      // Keep arrow+N fully on-canvas (N was clipping the right edge)
+      const nW = nS * 0.72;
+      const nGap = 10;
       const clearR = 18;
+      const minX = Math.min(tipX, tailX, a1x, a2x);
       let dx = 0;
       if (minX < lotRight + clearR) dx = lotRight + clearR - minX;
+      let needRight = tipX + nGap + nW + 8;
+      if (needRight + dx > width - 6) dx -= (needRight + dx) - (width - 6);
       if (dx) {
         tipX += dx;
         tailX += dx;
         a1x += dx;
         a2x += dx;
       }
-      const pole = random() > 0.5 ? B.charcoal : B.HB;
-      const poleW = random(0.50, 0.62);
-      brush.set(pole, pal("ink"), poleW);
-      brush.line(tailX, tailY, tipX, tipY);
 
-      analogTooth();
-      brush.line(tipX, tipY, a1x, a1y);
-      brush.line(tipX, tipY, a2x, a2y);
+      const ink = color(pal("ink"));
+      push();
+      stroke(ink);
+      strokeWeight(1.65);
+      strokeCap(ROUND);
+      strokeJoin(ROUND);
+      noFill();
+      line(tailX, tailY, tipX, tipY);
+      line(tipX, tipY, a1x, a1y);
+      line(tipX, tipY, a2x, a2y);
+      // N to the left of the tip when near the right edge; else right of tip, clear of pole
+      let nx = tipX + nGap;
+      if (nx + nW > width - 6) nx = tipX - nGap - nW;
+      const ny = tipY - 2;
+      strokeWeight(1.55);
+      line(nx, ny, nx, ny - nS);
+      line(nx, ny - nS, nx + nW, ny);
+      line(nx + nW, ny, nx + nW, ny - nS);
+      pop();
 
-      brush.wiggle(0.6);
-      brush.set(pole, pal("ink"), poleW - 0.08);
-      brush.line(tipX, tipY, a1x + random(-0.6, 0.6), a1y + random(-0.6, 0.6));
-      brush.line(tipX, tipY, a2x + random(-0.6, 0.6), a2y + random(-0.6, 0.6));
-      brush.noField();
-
-      drawWord("N", tipX + 10 - 0.14 * nS, tipY - 2 - 0.88 * nS, nS, pal("ink"));
-
-      resetBrush();
-      analogTooth();
-      const bar = lot.minS * 0.10;
+      const bar = lot.minS * 0.12;
       let rx = lot.scaleX;
       let sy = lot.scaleY;
       if (sy < lotBot + 12) sy = lotBot + 12;
       if (rx < lotRight + 16) rx = Math.min(width - 10, lotRight + 16);
       if (rx > width - 8) rx = width - 8;
       const lx = rx - bar;
-      const gap = random(3.0, 3.8);
-      const y1a = sy + random(-0.35, 0.35);
-      const y1b = sy + random(-0.35, 0.35);
-      const y2a = sy + gap + random(0.4, 0.8) * (random() < 0.5 ? 1 : -1);
-      const y2b = y2a + random(-0.5, 0.5);
-      const scalePen = random() > 0.5 ? B.charcoal : B.HB;
-      brush.set(scalePen, pal("ink"), random(0.42, 0.52));
-      analogTooth();
-      brush.line(lx, y1a, rx, y1b);
-      analogTooth();
-      brush.line(lx + random(-0.5, 0.5), y2a, rx + random(-0.5, 0.5), y2b);
-
-      const tick = random(7, 9);
+      const gap = 3.9;
+      const tick = 10;
       const tAng = 18;
-      analogTooth();
-      brush.line(lx, y1a, lx + cos(tAng) * tick, y1a - sin(tAng) * tick);
-      analogTooth();
-      brush.line(rx, y1b, rx - cos(tAng) * tick, y1b - sin(tAng) * tick);
-      brush.noField();
+      push();
+      stroke(ink);
+      strokeWeight(1.45);
+      strokeCap(ROUND);
+      noFill();
+      line(lx, sy, rx, sy);
+      line(lx, sy + gap, rx, sy + gap);
+      line(lx, sy, lx + cos(tAng) * tick, sy - sin(tAng) * tick);
+      line(rx, sy, rx - cos(tAng) * tick, sy - sin(tAng) * tick);
+      pop();
     }
 
     const GLYPH = {
