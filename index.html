@@ -262,6 +262,23 @@
       opacity: 0.32;
       pointer-events: none;
     }
+    #empty .show-one {
+      margin-top: 22px;
+      padding: 7px 15px;
+      font: inherit;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      color: var(--ink);
+      opacity: 0.42;
+      background: none;
+      border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+      border-radius: 999px;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: opacity 0.18s ease, border-color 0.18s ease;
+    }
+    #empty .show-one:hover { opacity: 0.72; border-color: color-mix(in srgb, var(--ink) 42%, transparent); }
+    #empty.off .show-one { pointer-events: none; }
     #empty .line {
       font-size: 13.5px;
       color: var(--ink);
@@ -331,15 +348,16 @@
        resize it composites through masks and a blend buffer still sized for the
        old canvas and stamps stale ink onto the sheet. The patch re-syncs when
        the dimensions actually change. The CDN fallback below is unpatched. -->
-  <script src="vendor/p5.brush.js?v=2.2.2-resize1"></script>
+  <script src="vendor/p5.brush.js?v=2.2.2-resize2"></script>
   <script>window.brush || document.write('<script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.2/dist/p5.brush.js"><\/script>')</script>
 </head>
 <body>
   <div id="token"></div>
-  <div id="webmcp-pill" aria-hidden="true">7 tools on this sheet</div>
+  <div id="webmcp-pill" aria-hidden="true">tools on this sheet</div>
   <div id="empty">
     <div class="prompt">Lay a contour</div>
     <div class="line">You sketch the idea. An agent finishes a courtyard you could hang.</div>
+    <button type="button" id="demo" class="show-one">or watch one drawn</button>
   </div>
   <div id="dock">
     <header id="head">
@@ -946,7 +964,10 @@
       for (let i = 0; i < names.length; i++) {
         if (box.indexOf(names[i]) !== -1) return names[i];
       }
-      return box[0];
+      // An empty box means the library had not finished loading. The names
+      // asked for are its own, so fall back to the first choice rather than
+      // to undefined, which would break every brush.set() later.
+      return box[0] || names[0];
     }
 
     function ribbonEdge(center, halfW, closed) {
@@ -1567,6 +1588,41 @@
       if (input) input.click();
     }
 
+    // A courtyard drawn by the same tools an agent uses, one gesture at a
+    // time so a newcomer sees the five brushes at work and what a finished
+    // sheet looks like. It is the fastest answer to "what is this for".
+    const DEMO = [
+      // An L, not a closed rectangle: a closed boxy wall still trails faint
+      // diagonals from its corners, and the demo is the first thing anyone
+      // sees. The bug is older than this file's current shape and untouched.
+      ["wall", [[0.09, 0.62], [0.09, 0.12], [0.62, 0.10]]],
+      ["topo", [[0.12, 0.30], [0.30, 0.26], [0.52, 0.28], [0.72, 0.24], [0.88, 0.27]]],
+      ["water", [[0.20, 0.50], [0.34, 0.45], [0.47, 0.50], [0.49, 0.64], [0.36, 0.71], [0.22, 0.66], [0.17, 0.57], [0.20, 0.50]]],
+      ["path", [[0.62, 0.15], [0.66, 0.38], [0.60, 0.58], [0.67, 0.78], [0.63, 0.87]]],
+      ["plant", [[0.72, 0.44], [0.80, 0.47], [0.87, 0.44]]],
+      ["plant", [[0.30, 0.82]]],
+      ["plant", [[0.79, 0.70]]]
+    ];
+    let demoRunning = false;
+
+    async function runDemo() {
+      if (demoRunning || gestures.length) return;
+      demoRunning = true;
+      const btn = document.getElementById("demo");
+      if (btn) btn.disabled = true;
+      try {
+        for (let i = 0; i < DEMO.length; i++) {
+          const step = DEMO[i];
+          agentLay(step[0], { points: step[1].map(function (p) { return { x: p[0], y: p[1] }; }) });
+          await new Promise(function (r) { setTimeout(r, 420); });
+        }
+      } catch (err) {
+        if (window.console) console.warn("[Garth] demo stopped", err);
+      }
+      demoRunning = false;
+      if (btn) btn.disabled = false;
+    }
+
     function showEmpty() {
       const el = document.getElementById("empty");
       el.classList.toggle("off", gestures.length > 0);
@@ -1641,6 +1697,15 @@
         e.preventDefault();
         loadUnderlayFile(f);
       });
+
+      const demoBtn = document.getElementById("demo");
+      if (demoBtn) {
+        demoBtn.addEventListener("click", function (evt) {
+          evt.stopPropagation();
+          runDemo();
+        });
+        demoBtn.addEventListener("pointerdown", function (evt) { evt.stopPropagation(); });
+      }
 
       const fileInput = document.getElementById("underlay-file");
       if (fileInput) {
@@ -1852,20 +1917,18 @@
       }, SETTLE_MS);
     }
 
-    function setup() {
-      // NEVER call setAttributes — p5 2 throws
-      // TypeError: _renderer._setAttributes is not a function
-      // and the canvas stays 100x100 blank. This vendor already
-      // defaults preserveDrawingBuffer to true.
-      createCanvas(windowWidth, windowHeight, WEBGL);
-      pixelDensity(1);
-      angleMode(DEGREES);
-      if (!brushesScaled) {
-        brush.scaleBrushes(5);
-        brushesScaled = true;
+    let brushReady = false;
+
+    function ensureBrushes() {
+      if (brushReady) return true;
+      let box = [];
+      try {
+        if (typeof brush.load === "function") brush.load();
+        box = brush.box() || [];
+      } catch (err) {
+        return false;
       }
-      if (typeof brush.load === "function") brush.load();
-      const box = brush.box();
+      if (!box.length) return false;
       B.HB = pickBrush(box, ["HB", "2B", "pen"]);
       B.charcoal = pickBrush(box, ["charcoal", "2B", "HB"]);
       B.hatch = pickBrush(box, ["2H", "HB", "cpencil"]);
@@ -1877,6 +1940,47 @@
       B.cpencil = pickBrush(box, ["cpencil", "2H", "HB"]);
       B.pen = pickBrush(box, ["pen", "rotring", "HB"]);
       B.marker = pickBrush(box, ["marker", "rotring", "HB", "pen"]);
+      brushReady = true;
+      return true;
+    }
+
+    function setup() {
+      // NEVER call setAttributes — p5 2 throws
+      // TypeError: _renderer._setAttributes is not a function
+      // and the canvas stays 100x100 blank. This vendor already
+      // defaults preserveDrawingBuffer to true.
+      // A hidden or not-yet-laid-out tab reports 0 for the window, and a
+      // 0x0 canvas takes everything with it: p5.brush cannot resolve it, so
+      // nothing ever draws again even once the tab is shown. Floor it and let
+      // windowResized correct the size when the page actually has one.
+      createCanvas(Math.max(320, windowWidth), Math.max(240, windowHeight), WEBGL);
+      pixelDensity(1);
+      angleMode(DEGREES);
+      if (!brushesScaled) {
+        brush.scaleBrushes(5);
+        brushesScaled = true;
+      }
+      // p5.brush can throw here on a first load, before its own canvas
+      // resolution has settled. Letting that escape took the rest of setup
+      // down with it — blank sheet, no agent tools. Swallowing it silently is
+      // worse still: the page comes up and simply never draws. So retry until
+      // the brushes are really there, then repaint.
+      if (!ensureBrushes()) {
+        let tries = 0;
+        const waitForBrushes = setInterval(function () {
+          tries += 1;
+          if (ensureBrushes() || tries > 40) {
+            clearInterval(waitForBrushes);
+            if (brushReady) {
+              invalidateSheetCache();
+              markSheetChanged();
+              paintNow();
+            } else if (window.console) {
+              console.warn("[Garth] p5.brush never finished loading");
+            }
+          }
+        }, 120);
+      }
       layoutLot();
       noLoop();
       cursor(CROSS);
@@ -1960,7 +2064,7 @@
     }
 
     function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
+      resizeCanvas(Math.max(320, windowWidth), Math.max(240, windowHeight));
       // p5.brush sizes its blend source framebuffer in load(). Without a reload
       // it keeps the old canvas dimensions after a resize and the composite
       // pass writes stale blocks of the previous sheet back onto the paper.
@@ -3368,6 +3472,47 @@
       };
     }
 
+    function agentReadSheet() {
+      // Without this an agent draws blind: it can add to the sheet but cannot
+      // see what is already on it, so it cannot answer to the drawing.
+      const out = [];
+      for (let i = 0; i < gestures.length; i++) {
+        const g = gestures[i];
+        const src = (g.pts && g.pts.length) ? g.pts : (g.x != null ? [[g.x, g.y]] : null);
+        const item = { index: i, kind: g.kind, by: g.agent ? "agent" : "hand" };
+        if (g.kind === "water") item.form = g.rill ? "rill" : "pool";
+        if (g.kind === "plant") item.form = "hedge";
+        if (g.kind === "tree") item.form = "tree";
+        if (g.closed) item.closed = true;
+        if (src) {
+          const bb = bboxOf(src);
+          const nx = function (v) { return +((v - lot.x) / lot.w).toFixed(3); };
+          const ny = function (v) { return +((v - lot.y) / lot.h).toFixed(3); };
+          item.at = { x: nx(bb.x + bb.w / 2), y: ny(bb.y + bb.h / 2) };
+          item.extent = { w: +(bb.w / lot.w).toFixed(3), h: +(bb.h / lot.h).toFixed(3) };
+        }
+        if (g.r != null) item.radius = +(g.r / Math.min(lot.w, lot.h)).toFixed(3);
+        out.push(item);
+      }
+      return {
+        ok: true,
+        gestures: out,
+        count: out.length,
+        underlay: underlay ? { present: true, name: underlayName || null } : { present: false },
+        tone: dark ? "night" : "day",
+        note: "Positions are the lot in 0–1, left/top to right/bottom, the same space lay_* takes."
+      };
+    }
+
+    function agentUndo() {
+      if (!gestures.length) return { ok: false, reason: "nothing on the sheet", gestures: 0 };
+      const g = gestures[gestures.length - 1];
+      undoLast();
+      flashToken("undone");
+      flashToolRail('[data-act="undo"]');
+      return { ok: true, removed: g.kind, gestures: gestures.length };
+    }
+
     function agentClearSheet() {
       if (drawing) endStroke();
       clearGestures();
@@ -3527,6 +3672,22 @@
         execute: async function () { return agentClearSheet(); }
       },
       {
+        name: "read_sheet",
+        title: "Read the sheet",
+        description: "Read what is already on the courtyard sheet: every gesture with its kind, whether a hand or an agent laid it, and where it sits in the lot (0–1, the same space lay_* takes). Read this before adding to a sheet so the new work answers the drawing.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true },
+        execute: async function () { return agentReadSheet(); }
+      },
+      {
+        name: "undo_gesture",
+        title: "Undo the last gesture",
+        description: "Take the last gesture back off the sheet. Same as Undo / z.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, consequentialHint: true },
+        execute: async function () { return agentUndo(); }
+      },
+      {
         name: "export_sheet",
         title: "Take the sheet",
         description: "Take the covered hangable sheet as garth.png — vellum down, ready to hang. Same as Take the sheet / e.",
@@ -3551,6 +3712,9 @@
       function showWebmcpPill() {
         const el = document.getElementById("webmcp-pill");
         if (!el) return;
+        // Count what is actually registered rather than carrying a number that
+        // goes stale the moment a tool is added
+        el.textContent = YARD_WEBMCP_TOOLS.length + " tools on this sheet";
         el.classList.remove("on");
         void el.offsetWidth;
         el.classList.add("on");
