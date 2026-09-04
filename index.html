@@ -231,6 +231,76 @@
       letter-spacing: 0.04em;
       color: var(--mute);
     }
+    .tone-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 40px;
+      box-sizing: border-box;
+      padding: 0 4px;
+    }
+    .tone-row button[data-act="dark"] {
+      width: auto;
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 0;
+    }
+    #vellum-alpha {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 64px;
+      height: 2.5px;
+      flex: 0 0 64px;
+      margin: 0;
+      padding: 0;
+      background: color-mix(in srgb, var(--ink) 22%, transparent);
+      border-radius: 999px;
+      outline: none;
+      cursor: pointer;
+    }
+    #vellum-alpha::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--ink);
+      border: none;
+      opacity: 0.55;
+      cursor: pointer;
+    }
+    #vellum-alpha::-moz-range-thumb {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--ink);
+      border: none;
+      opacity: 0.55;
+      cursor: pointer;
+    }
+    #vellum-alpha:focus-visible {
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 35%, transparent);
+    }
+    #alpha-flash {
+      position: fixed;
+      left: calc(232px + (100vw - 232px) / 2);
+      top: 42%;
+      transform: translate(-50%, -50%);
+      z-index: 21;
+      pointer-events: none;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--ink);
+      opacity: 0;
+      transition: opacity 0.55s ease-out;
+    }
+    #alpha-flash.on {
+      opacity: 0.28;
+      transition: opacity 0.08s linear;
+    }
     #empty {
       position: fixed;
       left: 232px;
@@ -603,11 +673,15 @@
       <nav id="actions">
         <button type="button" data-act="undo">Undo<span class="k">z</span></button>
         <button type="button" data-act="clear">Clear the sheet<span class="k">c</span></button>
-        <button type="button" data-act="dark">Tone<span class="k">d</span></button>
+        <div class="tone-row">
+          <button type="button" data-act="dark">Tone<span class="k">d</span></button>
+          <input type="range" id="vellum-alpha" min="40" max="220" value="152" aria-label="Yellow sheet opacity" />
+        </div>
         <button type="button" data-act="export">Take the sheet<span class="k">e</span></button>
       </nav>
     </div>
   </div>
+  <div id="alpha-flash" aria-hidden="true"></div>
   <script>
     const LIGHT = {
       paper: "#efe6d0",
@@ -663,8 +737,32 @@
     let lastDragDraw = 0;
     let vellumKey = false;
     let deskLift = false;
-    let vellumAlpha = 152; // hold V / hover Tone + wheel: 40–220
-    let toneHover = false;
+    let vellumAlpha = 152; // Tone-row slider: 40–220
+    let alphaFlashTimer = null;
+
+    function flashAlphaPct() {
+      const el = document.getElementById("alpha-flash");
+      if (!el) return;
+      const pct = Math.round((vellumAlpha / 255) * 100);
+      el.textContent = pct + "%";
+      el.classList.add("on");
+      if (alphaFlashTimer) clearTimeout(alphaFlashTimer);
+      alphaFlashTimer = setTimeout(function () {
+        el.classList.remove("on");
+        alphaFlashTimer = null;
+      }, 600);
+    }
+
+    function setVellumAlpha(next, flash) {
+      next = Math.max(40, Math.min(220, next | 0));
+      if (next === vellumAlpha) return;
+      vellumAlpha = next;
+      const sl = document.getElementById("vellum-alpha");
+      if (sl && Number(sl.value) !== vellumAlpha) sl.value = String(vellumAlpha);
+      invalidateSheetCache();
+      redraw();
+      if (flash) flashAlphaPct();
+    }
     let bakingWorld = false;
     const SETTLE_MS = 700;
     const DOCK_W = 232;
@@ -1440,22 +1538,16 @@
           else if (act === "dark") toggleDark();
           else if (act === "export") exportSheet();
         });
-        if (actBtns[i].dataset.act === "dark") {
-          actBtns[i].addEventListener("pointerenter", function () { toneHover = true; });
-          actBtns[i].addEventListener("pointerleave", function () { toneHover = false; });
-          actBtns[i].addEventListener("wheel", function (evt) {
-            evt.preventDefault();
-            evt.stopPropagation();
-            const delta = evt.deltaY || 0;
-            if (!delta) return;
-            const step = delta > 0 ? -10 : 10;
-            const next = Math.max(40, Math.min(220, vellumAlpha + step));
-            if (next === vellumAlpha) return;
-            vellumAlpha = next;
-            invalidateSheetCache();
-            redraw();
-          }, { passive: false });
-        }
+      }
+      const alphaSl = document.getElementById("vellum-alpha");
+      if (alphaSl) {
+        alphaSl.value = String(vellumAlpha);
+        alphaSl.addEventListener("pointerdown", function (evt) { evt.stopPropagation(); });
+        alphaSl.addEventListener("mousedown", function (evt) { evt.stopPropagation(); });
+        alphaSl.addEventListener("click", function (evt) { evt.stopPropagation(); });
+        alphaSl.addEventListener("input", function () {
+          setVellumAlpha(Number(alphaSl.value), true);
+        });
       }
     }
 
@@ -2101,16 +2193,6 @@
       if (!overSheet()) return true;
       const delta = evt && evt.deltaY != null ? evt.deltaY : 0;
       if (!delta) return false;
-      // Hold V or hover Tone + wheel: adjust yellow vellum alpha (no slider)
-      if (vellumKey || toneHover || (typeof keyIsDown === "function" && keyIsDown(86))) {
-        const step = delta > 0 ? -10 : 10;
-        const next = constrain(vellumAlpha + step, 40, 220);
-        if (next === vellumAlpha) return false;
-        vellumAlpha = next;
-        invalidateSheetCache();
-        redraw();
-        return false;
-      }
       const before = viewZoom;
       const factor = delta > 0 ? 0.92 : 1.08;
       viewZoom = constrain(viewZoom * factor, VIEW_ZMIN, VIEW_ZMAX);
