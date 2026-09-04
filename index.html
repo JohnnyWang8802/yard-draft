@@ -743,6 +743,7 @@
     let deskLift = false;
     let vellumAlpha = 152; // Tone-row slider: 40–220
     let alphaFlashTimer = null;
+    let toneTimer = null;
 
     function flashAlphaPct() {
       const el = document.getElementById("alpha-flash");
@@ -763,8 +764,15 @@
       vellumAlpha = next;
       const sl = document.getElementById("vellum-alpha");
       if (sl && Number(sl.value) !== vellumAlpha) sl.value = String(vellumAlpha);
-      // Paper alpha is live (not in stroke cache) — no invalidate
-      paintNow();
+      // Paper tone is baked under the ink now (see lotBackdropColor), so it
+      // needs a rebuild — debounced so dragging the slider does not replay
+      // every stroke on each input event.
+      if (toneTimer) clearTimeout(toneTimer);
+      toneTimer = setTimeout(function () {
+        toneTimer = null;
+        invalidateSheetCache();
+        paintNow();
+      }, 140);
       if (flash) flashAlphaPct();
     }
     let bakingWorld = false;
@@ -1779,6 +1787,10 @@
 
     function windowResized() {
       resizeCanvas(windowWidth, windowHeight);
+      // p5.brush sizes its blend source framebuffer in load(). Without a reload
+      // it keeps the old canvas dimensions after a resize and the composite
+      // pass writes stale blocks of the previous sheet back onto the paper.
+      if (typeof brush.load === "function") brush.load();
       layoutLot();
       markSheetChanged();
       requestAnalog();
@@ -2124,6 +2136,7 @@
         resetBrush();
         bakingWorld = true;
         if (append) {
+          // The blit restores the opaque sheet the new strokes composite onto
           blitWorldCache();
           resetBrush();
           drawGestureRange(bakedUpTo);
@@ -2212,19 +2225,13 @@
     }
 
     function drawInkLayers() {
-      // Soft lot ticks + gestures — no paper/tray (baked into stroke cache)
+      // Opaque sheet + lot ticks + gestures — the whole thing bakes together
+      drawLotBackdrop();
       drawLot();
       drawGestureRange(0);
     }
 
-    function drawLotPaper() {
-      // Translucent yellow rice paper (live, not baked) — dots show through
-      if (!vellumLifted()) drawVellumSheet();
-      else if (vellumKey) drawVellumSheet();
-    }
-
     function drawWorldSheet() {
-      drawLotPaper();
       drawInkLayers();
       if (!bakingWorld) drawLotBorder();
     }
@@ -2234,10 +2241,8 @@
       background(pal("tray"));
       push();
       translate(-width / 2, -height / 2);
-      drawDotGrid();
       push();
       applyWorldView();
-      drawLotPaper();
       if (!blitWorldCache()) {
         resetBrush();
         drawInkLayers();
@@ -2245,6 +2250,7 @@
       drawLotBorder();
       if (extraWorld) extraWorld();
       pop();
+      drawDotGrid();
       drawNorthScale();
       pop();
       resetBrush();
@@ -2252,11 +2258,11 @@
 
     function drawCommittedSheet() {
       // Full rebuild path (cache miss): world at identity then bake
-      drawDotGrid();
       push();
       applyWorldView();
       drawWorldSheet();
       pop();
+      drawDotGrid();
       drawNorthScale();
     }
 
@@ -2308,13 +2314,13 @@
       push();
       translate(-width / 2, -height / 2);
       resetBrush();
-      drawDotGrid();
       push();
       applyWorldView();
       drawWorldSheet();
       if (livePts && livePts.length) drawLivePreview();
       else if (hasPtr) drawHandGlyph();
       pop();
+      drawDotGrid();
       drawNorthScale();
       pop();
       resetBrush();
@@ -2346,13 +2352,22 @@
       return false;
     }
 
-    function drawVellumSheet() {
+    function lotBackdropColor() {
+      // p5.brush reads the canvas back and treats a transparent pixel as white
+      // paper (bgColor = mix(vec3(1.0), source.rgb, source.a)), then writes the
+      // result opaque. Ink baked on a cleared canvas therefore burned white
+      // holes through soft mask edges. Flatten the paper into a solid colour so
+      // the brush always composites onto the tone it will be seen against.
+      const tray = color(pal("tray"));
+      if (vellumLifted() && !vellumKey) return tray;
+      return lerpColor(tray, color(pal("vellum")), Math.min(1, vellumAlpha / 255));
+    }
+
+    function drawLotBackdrop() {
       push();
       noStroke();
       rectMode(CORNER);
-      const sheet = color(pal("vellum"));
-      sheet.setAlpha(vellumAlpha);
-      fill(sheet);
+      fill(lotBackdropColor());
       rect(lot.x, lot.y, lot.w, lot.h);
       noFill();
       pop();
@@ -2430,7 +2445,7 @@
     }
 
     function drawLot() {
-      // Opaque paper plate removed — yellow rice paper is drawLotPaper (vellumAlpha).
+      // Opaque paper plate removed — the sheet tone is drawLotBackdrop (vellumAlpha).
       // Soft under-edge tick marks stay as light ink (drawn with gestures bake path via ink).
       resetBrush();
       analogTooth();
