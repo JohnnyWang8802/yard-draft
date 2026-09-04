@@ -107,6 +107,17 @@
       color: var(--paper);
     }
     .tool.on:hover { background: var(--ink); }
+    .tool.flash {
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .tool.flash .name { color: var(--paper); opacity: 1; }
+    .tool.flash .k { display: inline; color: var(--paper); }
+    .tool.flash .chip .olive { stroke: none; }
+    .tool.flash .chip .ink { stroke: var(--paper); }
+    #actions button.flash {
+      background: color-mix(in srgb, var(--ink) 14%, transparent);
+    }
     .tool .chip {
       width: 40px;
       height: 40px;
@@ -235,7 +246,6 @@
       pointer-events: none;
     }
     #webmcp-pill {
-      display: none;
       position: fixed;
       left: calc(232px + (100vw - 232px) / 2);
       bottom: 28px;
@@ -251,12 +261,17 @@
       background: color-mix(in srgb, var(--paper) 72%, transparent);
       border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
       box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
-      opacity: 0.78;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 200ms ease, visibility 200ms ease;
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       white-space: nowrap;
     }
-    #webmcp-pill.on { display: block; }
+    #webmcp-pill.on {
+      opacity: 0.78;
+      visibility: visible;
+    }
     body.dark #webmcp-pill {
       background: color-mix(in srgb, var(--paper) 55%, transparent);
       border-color: color-mix(in srgb, var(--ink) 22%, transparent);
@@ -613,6 +628,7 @@
     let lot = {};
     let gestures = [];
     let agentPending = false;
+    let toolFlashTimer = null;
     let livePts = null;
     let strokeLock = false;
     let liveT0 = 0;
@@ -2417,6 +2433,21 @@
       return out;
     }
 
+    function flashToolRail(sel) {
+      const dock = document.getElementById("dock");
+      if (!dock || !sel) return;
+      const el = dock.querySelector(sel);
+      if (!el) return;
+      const flashed = dock.querySelectorAll(".flash");
+      for (let i = 0; i < flashed.length; i++) flashed[i].classList.remove("flash");
+      el.classList.add("flash");
+      if (toolFlashTimer) clearTimeout(toolFlashTimer);
+      toolFlashTimer = setTimeout(function () {
+        el.classList.remove("flash");
+        toolFlashTimer = null;
+      }, 400);
+    }
+
     function agentLay(toolMode, input) {
       if (drawing) endStroke();
       const pts = parseAgentPoints(input);
@@ -2431,6 +2462,8 @@
         agentPending = false;
       }
       showEmpty();
+      // Force one settle/analog retrace so agent finish layer lands like a settled hand.
+      if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
       requestAnalog();
       redraw();
       mode = prev;
@@ -2445,6 +2478,7 @@
         };
       }
       flashToken("laid");
+      flashToolRail('.tool[data-mode="' + toolMode + '"]');
       const g = gestures[gestures.length - 1];
       return {
         ok: true,
@@ -2461,6 +2495,7 @@
       clearGestures();
       redraw();
       flashToken("cleared");
+      flashToolRail('[data-act="clear"]');
       return { ok: true, gestures: 0 };
     }
 
@@ -2470,6 +2505,7 @@
       }
       exportSheet();
       flashToken("taken");
+      flashToolRail('[data-act="export"]');
       return { ok: true, file: "yard-draft.png", covered: true };
     }
 
@@ -2636,10 +2672,11 @@
 
       function showWebmcpPill() {
         const el = document.getElementById("webmcp-pill");
-        if (el) {
-          el.classList.add("on");
-          el.setAttribute("aria-hidden", "false");
-        }
+        if (!el) return;
+        el.classList.remove("on");
+        void el.offsetWidth;
+        el.classList.add("on");
+        el.setAttribute("aria-hidden", "false");
       }
       showWebmcpPill();
 
