@@ -668,6 +668,10 @@
     let viewZoom = 1;
     let viewPanX = 0;
     let viewPanY = 0;
+    let spaceHeld = false;
+    let panning = false;
+    let panLastX = 0;
+    let panLastY = 0;
     const VIEW_ZMIN = 0.5;
     const VIEW_ZMAX = 2.5;
     const DOT_STEP = 14;
@@ -1512,7 +1516,19 @@
       const cnv = document.querySelector("canvas");
       if (cnv) {
         function onCnvDown(e) {
-          if (e.button != null && e.button !== 0) return;
+          const btn = e.button != null ? e.button : 0;
+          // Pan: middle button, secondary, or Space+primary
+          if (!drawing && (btn === 1 || btn === 2 || (btn === 0 && spaceHeld))) {
+            panning = true;
+            panLastX = mouseX;
+            panLastY = mouseY;
+            if (e.preventDefault) e.preventDefault();
+            if (e.pointerId != null && cnv.setPointerCapture) {
+              try { cnv.setPointerCapture(e.pointerId); } catch (err) {}
+            }
+            return;
+          }
+          if (btn !== 0) return;
           const xy = canvasXY(e);
           if (!drawing && onDesk(xy[0], xy[1])) {
             deskLift = true;
@@ -1525,10 +1541,28 @@
           }
         }
         function onCnvMove(e) {
+          if (panning) {
+            const dx = mouseX - panLastX;
+            const dy = mouseY - panLastY;
+            panLastX = mouseX;
+            panLastY = mouseY;
+            viewPanX += dx;
+            viewPanY += dy;
+            redraw();
+            return;
+          }
           if (!drawing) return;
           samplePointer(e);
         }
         function onCnvUp(e) {
+          if (panning) {
+            panning = false;
+            if (e.pointerId != null && cnv.releasePointerCapture) {
+              try { cnv.releasePointerCapture(e.pointerId); } catch (err) {}
+            }
+            redraw();
+            return;
+          }
           if (deskLift) {
             deskLift = false;
             invalidateSheetCache();
@@ -1547,6 +1581,8 @@
         cnv.addEventListener("mousedown", onCnvDown, true);
         cnv.addEventListener("mousemove", onCnvMove, true);
         cnv.addEventListener("mouseup", onCnvUp, true);
+        cnv.addEventListener("contextmenu", function (e) { e.preventDefault(); }, true);
+        cnv.addEventListener("auxclick", function (e) { if (e.button === 1) e.preventDefault(); }, true);
       }
       registerYardWebMCP();
     }
@@ -1567,6 +1603,7 @@
     function beginStroke(evt) {
       if (drawing || strokeLock) return false;
       if (livePts && livePts.length) return false;
+      if (spaceHeld || panning) return false;
       const xy = worldPointer(evt);
       if (!inLotWorld(xy[0], xy[1])) return false;
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
@@ -1649,6 +1686,16 @@
     }
 
     function mouseDragged(evt) {
+      if (panning) {
+        const dx = mouseX - panLastX;
+        const dy = mouseY - panLastY;
+        panLastX = mouseX;
+        panLastY = mouseY;
+        viewPanX += dx;
+        viewPanY += dy;
+        redraw();
+        return false;
+      }
       if (drawing) {
         const wxy = sheetFromScreen(mouseX, mouseY);
         sampleLive(wxy[0], wxy[1]);
@@ -1817,6 +1864,7 @@
     }
 
     function keyPressed() {
+      if (key === " " || keyCode === 32) { spaceHeld = true; return false; }
       const k = (key || "").toLowerCase();
       if (k === "v") {
         if (drawing) return;
@@ -1844,6 +1892,7 @@
     }
 
     function keyReleased() {
+      if (key === " " || keyCode === 32) { spaceHeld = false; if (panning) { panning = false; redraw(); } return false; }
       const k = (key || "").toLowerCase();
       if (k === "v") {
         vellumKey = false;
@@ -1853,23 +1902,40 @@
       }
     }
 
-    function blitSheetCache() {
+    function blitWorldCache() {
       if (!sheetCache) return false;
       push();
-      resetMatrix();
       imageMode(CORNER);
-      // WEBGL: draw the cached pixels as a screen-aligned quad
-      image(sheetCache, -width / 2, -height / 2, width, height);
+      // Lot-sized identity bake; applyWorldView scales/pans the rice paper only
+      image(sheetCache, lot.x, lot.y, lot.w, lot.h);
       pop();
       return true;
     }
 
-    function bakeSheetCache() {
+    function bakeWorldCache() {
+      // Bake lot+gestures at zoom=1 / pan=0 (crop to lot — desk dots stay screen-fixed)
+      const hz = viewZoom;
+      const hx = viewPanX;
+      const hy = viewPanY;
+      viewZoom = 1;
+      viewPanX = 0;
+      viewPanY = 0;
       try {
-        sheetCache = get(0, 0, width, height);
+        push();
+        resetMatrix();
+        translate(-width / 2, -height / 2);
+        background(pal("tray"));
+        resetBrush();
+        drawWorldSheet();
+        pop();
+        resetBrush();
+        sheetCache = get(lot.x, lot.y, lot.w, lot.h);
       } catch (err) {
         sheetCache = null;
       }
+      viewZoom = hz;
+      viewPanX = hx;
+      viewPanY = hy;
     }
 
     function drawDotGrid() {
@@ -1913,7 +1979,27 @@
       }
     }
 
+    function composeViewport(extraWorld) {
+      // Screen: tray + dots; world: cache (or live sheet); screen HUD
+      background(pal("tray"));
+      push();
+      translate(-width / 2, -height / 2);
+      drawDotGrid();
+      push();
+      applyWorldView();
+      if (!blitWorldCache()) {
+        resetBrush();
+        drawWorldSheet();
+      }
+      if (extraWorld) extraWorld();
+      pop();
+      drawNorthScale();
+      pop();
+      resetBrush();
+    }
+
     function drawCommittedSheet() {
+      // Full rebuild path (cache miss): world at identity then bake
       drawDotGrid();
       push();
       applyWorldView();
@@ -1936,47 +2022,46 @@
       randomSeed(passSeed);
       noiseSeed(passSeed);
 
-      if (drawing && sheetCache && livePts) {
-        if (blitSheetCache()) {
-          push();
-          translate(-width / 2, -height / 2);
-          applyWorldView();
-          drawLivePreview();
-          pop();
-          resetBrush();
+      // Fast path: world cache + live / glyph (zoom/pan never invalidate cache)
+      if (sheetCache && !analogDirty) {
+        if (drawing && livePts) {
+          composeViewport(function () { drawLivePreview(); });
+          return;
+        }
+        if (!drawing && hasPtr && !(livePts && livePts.length)) {
+          composeViewport(function () { drawHandGlyph(); });
+          return;
+        }
+        if (!drawing && !(livePts && livePts.length) && !panning) {
+          composeViewport(null);
+          return;
+        }
+        if (panning) {
+          composeViewport(null);
           return;
         }
       }
 
-      if (!drawing && !analogDirty && sheetCache && hasPtr && !(livePts && livePts.length)) {
-        if (blitSheetCache()) {
-          push();
-          translate(-width / 2, -height / 2);
-          applyWorldView();
-          drawHandGlyph();
-          pop();
-          resetBrush();
-          return;
-        }
-      }
-
+      // Cache miss / settle: full world draw at current view, then bake identity
       background(pal("tray"));
       push();
       translate(-width / 2, -height / 2);
       resetBrush();
-      drawCommittedSheet();
-
+      drawDotGrid();
       push();
       applyWorldView();
+      drawWorldSheet();
       if (livePts && livePts.length) drawLivePreview();
       else if (hasPtr) drawHandGlyph();
       pop();
-
+      drawNorthScale();
       pop();
       resetBrush();
 
-      if (!drawing && !(livePts && livePts.length)) {
-        bakeSheetCache();
+      if (!drawing && !(livePts && livePts.length) && !panning) {
+        bakeWorldCache();
+        // Recompose from fresh cache so on-screen matches blit path
+        composeViewport(hasPtr ? function () { drawHandGlyph(); } : null);
       }
     }
 
@@ -1995,7 +2080,7 @@
       const wy = (sy - viewPanY - c[1]) / before + c[1];
       viewPanX = sx - c[0] - (wx - c[0]) * viewZoom;
       viewPanY = sy - c[1] - (wy - c[1]) * viewZoom;
-      invalidateSheetCache();
+      // Do NOT invalidate world cache — blit only
       redraw();
       return false;
     }
@@ -2679,9 +2764,9 @@
         agentPending = false;
       }
       showEmpty();
-      // Force one settle/analog retrace so agent finish layer lands like a settled hand.
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
-      requestAnalog();
+      // No forced full-history analog — commit already stamped hand; one redraw + cache bake
+      invalidateSheetCache();
       redraw();
       mode = prev;
       updateCaption();
