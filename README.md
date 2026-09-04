@@ -80,7 +80,7 @@ The 232px left rail is a pencil tray on the drafting table. Tools: Terrain / Wat
 - `Undo` / `z` — undo last gesture
 - `Clear the sheet` / `c` / Backspace — clear gestures; the lot stays
 - `Tone` / `d` — cream sheet or night paper
-- `Take the sheet` / `e` — export PNG (`garth`)
+- `Take the sheet` / `e` — export the sheet alone as a PNG (`garth`), redrawn at about A3/300dpi rather than at screen size
 
 ## Stack
 

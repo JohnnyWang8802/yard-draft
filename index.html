@@ -682,6 +682,10 @@
     let sheetRev = 0;
     let settledRev = -1;
     const SETTLE_ANALOG_MIN = 1500;
+    // Long side of the exported sheet, in pixels: about A3 at 300dpi
+    const EXPORT_LONG_SIDE = 3200;
+    const EXPORT_MAX_SCALE = 3.5;
+    const EXPORT_MAX_PX = 8000;
     const ANALOG_MAX = 10;
     let brushesScaled = false;
     let B = {};
@@ -1493,31 +1497,92 @@
       requestAnalog();
     }
 
-    function exportSheet() {
-      if (drawing || suppressExport) return;
+    async function exportSheet() {
+      if (drawing || suppressExport) return null;
+      // Redrawing at export size takes seconds. Put the mark up and let the
+      // browser paint it before the work starts, or the page just freezes.
+      flashToken("taking the sheet");
+      await new Promise(function (r) {
+        requestAnimationFrame(function () { requestAnimationFrame(r); });
+      });
+      // What comes out should be the sheet, at a size worth printing — not a
+      // screenshot of the desk. Redraw the whole drawing on a canvas several
+      // times larger: the strokes are regenerated at that size rather than
+      // scaled up, so they come out finer, not softer.
       const holdKey = vellumKey;
       const holdDesk = deskLift;
       const holdZ = viewZoom;
       const holdPX = viewPanX;
       const holdPY = viewPanY;
+      const holdW = width;
+      const holdH = height;
+      const holdPtr = hasPtr;
+
+      const k = constrain(EXPORT_LONG_SIDE / Math.max(lot.w, lot.h), 1, EXPORT_MAX_SCALE);
+      const bigW = Math.min(EXPORT_MAX_PX, Math.round(width * k));
+      const bigH = Math.min(EXPORT_MAX_PX, Math.round(height * k));
+
       vellumKey = false;
       deskLift = false;
       viewZoom = 1;
       viewPanX = 0;
       viewPanY = 0;
-      // Minimal: blit world cache at identity — do NOT invalidate (avoids full brush replay)
-      // Synchronous compose — saveCanvas grabs the buffer now, and an async
-      // paintNow() would still be queued when it does.
-      if (!sheetCache) bakeWorldCache();
-      composeViewport(null);
-      saveCanvas("garth", "png");
+      hasPtr = false;
+
+      let img = null;
+      try {
+        if (bigW !== width || bigH !== height) {
+          resizeCanvas(bigW, bigH);
+          if (typeof brush.load === "function") { try { brush.load(); } catch (err) {} }
+          layoutLot();
+          remapGestures(lot);
+        }
+        invalidateSheetCache();
+
+        const m = Math.round(Math.max(10, lot.minS * 0.03));   // a margin of sheet round the lot
+        push();
+        resetMatrix();
+        translate(-width / 2, -height / 2);
+        clear();
+        push();
+        noStroke();
+        rectMode(CORNER);
+        fill(lotBackdropColor());
+        rect(lot.x - m, lot.y - m, lot.w + m * 2, lot.h + m * 2);
+        pop();
+        resetBrush();
+        bakingWorld = true;
+        drawInkLayers();
+        bakingWorld = false;
+        drawLotBorder();
+        flushBrushMarks();
+        pop();
+        resetBrush();
+        img = get(Math.round(lot.x - m), Math.round(lot.y - m),
+          Math.round(lot.w + m * 2), Math.round(lot.h + m * 2));
+      } catch (err) {
+        if (window.console) console.warn("[Garth] export failed", err);
+        img = null;
+      }
+
+      if (bigW !== holdW || bigH !== holdH) {
+        resizeCanvas(holdW, holdH);
+        if (typeof brush.load === "function") { try { brush.load(); } catch (err) {} }
+        layoutLot();
+        remapGestures(lot);
+      }
       vellumKey = holdKey;
       deskLift = holdDesk;
       viewZoom = holdZ;
       viewPanX = holdPX;
       viewPanY = holdPY;
-      // Restore on-screen view via blit; cache still valid
+      hasPtr = holdPtr;
+      invalidateSheetCache();
+      markSheetChanged();
       paintNow();
+
+      if (img) img.save("garth", "png");
+      return img ? { w: img.width, h: img.height } : null;
     }
 
     function setUnderlay(img, name) {
@@ -1527,6 +1592,7 @@
       underlay = img || null;
       underlayName = img ? (name || "") : "";
       updateUnderlayButton();
+      savePlan();
       invalidateSheetCache();
       markSheetChanged();
       paintNow();
@@ -1882,6 +1948,111 @@
 
     function markSheetChanged() {
       sheetRev += 1;
+      saveSoon();
+    }
+
+    // ---- keeping the sheet -----------------------------------------------
+    // A tool for catching an idea cannot lose the idea to a stray refresh.
+    // Gestures carry a snapshot of themselves and of the lot they were drawn
+    // in (see snapshotGesture), so a sheet kept on one screen restores onto
+    // another size by the same path a resize takes.
+    const SAVE_KEY = "garth.sheet.v1";
+    const PLAN_KEY = "garth.plan.v1";
+    let saveTimer = null;
+
+    function saveSoon() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveSheet, 700);
+    }
+
+    function saveSheet() {
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      try {
+        if (!gestures.length) {
+          localStorage.removeItem(SAVE_KEY);
+          localStorage.removeItem(PLAN_KEY);
+          return;
+        }
+        const trim = function (list) {
+          return list ? list.map(function (p) { return [+p[0].toFixed(2), +p[1].toFixed(2)]; }) : null;
+        };
+        const out = gestures.map(function (g) {
+          const b = g.base || {};
+          return {
+            kind: g.kind, seed: g.seed, agent: !!g.agent,
+            rill: !!g.rill, closed: !!g.closed, boxy: !!g.boxy,
+            n: g.n, downSign: g.downSign,
+            lotRef: g.lotRef,
+            base: {
+              pts: trim(b.pts), handSrc: trim(b.handSrc), joints: trim(b.joints),
+              clumps: b.clumps, corners: b.corners,
+              x: b.x, y: b.y, r: b.r, halfW: b.halfW, spacing: b.spacing
+            }
+          };
+        });
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, dark: dark, gestures: out }));
+      } catch (err) {
+        // quota or a private window: the sheet on screen is unaffected
+      }
+    }
+
+    function savePlan() {
+      try {
+        if (!underlay) { localStorage.removeItem(PLAN_KEY); return; }
+        const cv = underlay.canvas || (underlay.drawingContext && underlay.drawingContext.canvas);
+        if (!cv || !cv.toDataURL) return;
+        let url = cv.toDataURL("image/png");
+        if (url.length > 1400000) url = cv.toDataURL("image/jpeg", 0.82);
+        if (url.length > 2600000) return;   // too big to keep; the drawing still is
+        localStorage.setItem(PLAN_KEY, JSON.stringify({ name: underlayName, url: url }));
+      } catch (err) {}
+    }
+
+    function restoreSheet() {
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null"); } catch (err) { saved = null; }
+      if (!saved || saved.v !== 1 || !Array.isArray(saved.gestures) || !saved.gestures.length) return false;
+      try {
+        gestures = saved.gestures.map(function (g) {
+          const b = g.base || {};
+          const cp = function (l) { return l ? l.map(function (p) { return [p[0], p[1]]; }) : null; };
+          const item = {
+            kind: g.kind, seed: g.seed, n: g.n, downSign: g.downSign,
+            rill: g.rill, closed: g.closed, boxy: g.boxy,
+            lotRef: g.lotRef,
+            base: {
+              pts: cp(b.pts), handSrc: cp(b.handSrc), joints: cp(b.joints),
+              clumps: b.clumps ? b.clumps.map(function (c) { return Object.assign({}, c); }) : null,
+              corners: b.corners ? b.corners.map(function (c) { return Object.assign({}, c); }) : null,
+              x: b.x, y: b.y, r: b.r, halfW: b.halfW, spacing: b.spacing
+            },
+            handClosed: !!g.closed
+          };
+          if (g.agent) item.agent = true;
+          return item;
+        });
+        if (saved.dark && !dark) {
+          dark = true;
+          document.body.classList.toggle("dark", true);
+        }
+        // remapGestures rebuilds every live field from base + lotRef, which is
+        // exactly what a restore needs
+        remapGestures(lot);
+        for (let i = 0; i < gestures.length; i++) {
+          const g = gestures[i];
+          if (g.handSrc && g.handSrc.length >= 2) stampHand(g, g.handSrc, !!g.closed);
+        }
+      } catch (err) {
+        gestures = [];
+        return false;
+      }
+
+      let plan = null;
+      try { plan = JSON.parse(localStorage.getItem(PLAN_KEY) || "null"); } catch (err) { plan = null; }
+      if (plan && plan.url) {
+        loadImage(plan.url, function (img) { setUnderlay(img, plan.name || ""); }, function () {});
+      }
+      return true;
     }
 
     function requestAnalog() {
@@ -2061,6 +2232,17 @@
         cnv.addEventListener("auxclick", function (e) { if (e.button === 1) e.preventDefault(); }, true);
       }
       registerYardWebMCP();
+
+      if (restoreSheet()) {
+        showEmpty();          // a restored sheet is not an empty one
+        invalidateSheetCache();
+        markSheetChanged();
+        paintNow();
+      }
+      window.addEventListener("pagehide", saveSheet);
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") saveSheet();
+      });
     }
 
     function windowResized() {
@@ -3522,14 +3704,16 @@
       return { ok: true, gestures: 0 };
     }
 
-    function agentExportSheet() {
+    async function agentExportSheet() {
       if (drawing || suppressExport) {
         return { ok: false, reason: "still drawing — wait for the stroke to settle" };
       }
-      exportSheet();
+      const size = await exportSheet();
       flashToken("taken");
       flashToolRail('[data-act="export"]');
-      return { ok: true, file: "garth.png", covered: true };
+      return size
+        ? { ok: true, file: "garth.png", pixels: size.w + "x" + size.h, covered: true }
+        : { ok: false, reason: "the sheet could not be taken" };
     }
 
     const YARD_WEBMCP_TOOLS = [
