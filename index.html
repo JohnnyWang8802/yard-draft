@@ -689,6 +689,8 @@
       olive: "#55613a",
       sap: "#6a7a3d",
       sapDeep: "#3f4a28",
+      sepia: "#8a6a44",
+      sepiaDeep: "#6b4f31",
       terracotta: "#b56848",
       terraDeep: "#8f4e38",
       water: "#6e7f86",
@@ -703,6 +705,8 @@
       olive: "#8a9a5c",
       sap: "#9aaa62",
       sapDeep: "#6d7c48",
+      sepia: "#c09a70",
+      sepiaDeep: "#a8825c",
       terracotta: "#d08a6a",
       terraDeep: "#c07a58",
       water: "#8a9ba2",
@@ -1402,6 +1406,21 @@
       return jitterSeeded(rect, 0.95, seed);
     }
 
+    function lobedCircle(cx, cy, r, lobes, depth, seed) {
+      // A plan canopy is drawn with a broken, lobed edge — a plain circle
+      // reads as a shrub blob and matched the hedge texture exactly.
+      const n = Math.max(56, lobes * 12);
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const wob = Math.cos(a * lobes);
+        const rr = r * (1 + depth * wob) *
+          (1 + (hash(seed + ":lb:" + i) - 0.5) * 0.07);
+        out.push([cx + rr * Math.cos(a), cy + rr * Math.sin(a)]);
+      }
+      return out;
+    }
+
     function ellipsePts(cx, cy, rx, ry, n) {
       const pts = [];
       const count = n || 10;
@@ -1942,7 +1961,7 @@
             kind: "tree",
             x: p[0],
             y: p[1],
-            r: minS * (0.07 + hash(seedSeq + ":r") * 0.04),
+            r: minS * (0.045 + hash(seedSeq + ":r") * 0.025),
             seed: nextSeed()
           };
           stampHand(tree, [p], false);
@@ -2037,7 +2056,9 @@
           gestures.push(rillG);
         }
       } else if (mode === "wall") {
-        const halfW = minS * 0.013;
+        // A wall reads as two tight lines in plan. At the old 0.013 it was as
+        // wide as the walk and, filled green, indistinguishable from a hedge.
+        const halfW = minS * 0.0062;
         const boxy = isBoxy(copy);
         let spine;
         let closed = false;
@@ -2376,7 +2397,7 @@
     function drawLivePreview() {
       let col;
       if (mode === "topo") {
-        col = lerpColor(color(pal("sap")), color(pal("ink")), 0.26);
+        col = lerpColor(color(pal("sepia")), color(pal("ink")), 0.22);
       } else if (mode === "water") {
         col = color(pal("water"));
       } else if (mode === "plant") {
@@ -2599,7 +2620,7 @@
       if (!g.pts || g.pts.length < 2) return;
       resetBrush();
       const pts = analogize(g.pts, 0.9, 1, false);
-      const mixed = lerpColor(color(pal("sap")), color(pal("ink")), 0.26);
+      const mixed = lerpColor(color(pal("sepia")), color(pal("ink")), 0.22);
       const lightSapGrey = "#" + [red(mixed), green(mixed), blue(mixed)].map(function (n) {
         return ("0" + Math.round(n).toString(16)).slice(-2);
       }).join("");
@@ -2614,20 +2635,21 @@
         if (frac > 0) off = trimEnds(off, frac);
         if (!off || off.length < 2 || polyLen(off) < 4) continue;
         offsets[i] = off;
+        // Contours are continuous; only the index line is heavier. A dashed
+        // contour means "approximate" in survey drawing, so dashing the whole
+        // family read as scratch marks instead of terrain.
         const isIndex = (i % 4 === 0);
+        analogTooth();
         if (isIndex) {
-          analogTooth();
-          brush.set(random() > 0.5 ? B.HB : B.charcoal, lightSapGrey, random(0.55, 0.72));
-          shape(chaikin(jitter(off, 0.7), 1, false), false, 0.18);
+          brush.set(random() > 0.5 ? B.HB : B.charcoal, lightSapGrey, random(0.72, 0.92));
         } else {
-          analogTooth();
-          brush.set(random() > 0.5 ? B.H2 : B.HB, lightSapGrey, random(0.28, 0.40));
-          dashPath(jitter(off, 0.65), random(11, 16), random(4, 7));
+          brush.set(random() > 0.5 ? B.H2 : B.HB, lightSapGrey, random(0.34, 0.46));
         }
+        shape(chaikin(jitter(off, 0.65), 1, false), false, 0.18);
       }
       resetBrush();
       analogTooth();
-      brush.set(B.H2, pal("sap"), random(0.22, 0.34));
+      brush.set(B.HB, pal("sepiaDeep"), random(0.46, 0.62));
       for (let i = 1; i <= n; i++) {
         const k = i * downSign;
         const inner = offsets[k - downSign];
@@ -2641,7 +2663,7 @@
           const dx = mid[0] - p[0];
           const dy = mid[1] - p[1];
           const ln = Math.hypot(dx, dy) || 1;
-          const tick = spacing * (0.28 + hash(g.seed + ":tl:" + s) * 0.22);
+          const tick = spacing * (0.42 + hash(g.seed + ":tl:" + s) * 0.28);
           const ox = dx / ln;
           const oy = dy / ln;
           const inset = spacing * 0.12;
@@ -2675,7 +2697,7 @@
       }
 
       resetBrush();
-      brush.mass(B.pastel, random() > 0.45 ? pal("sap") : pal("sapDeep"), {
+      brush.mass(B.pastel, hash(g.seed + ":tone") > 0.45 ? pal("sap") : pal("sapDeep"), {
         precision: random(0.42, 0.54),
         strength: random(0.5, 0.82),
         gradient: 0.18,
@@ -2706,7 +2728,7 @@
       const r = g.r * random(0.96, 1.05);
 
       resetBrush();
-      const shadowCol = random() > 0.5 ? pal("terracotta") : pal("ink");
+      const shadowCol = hash(g.seed + ":shade") > 0.5 ? pal("terracotta") : pal("ink");
       brush.fill(shadowCol, random(62, 86));
       brush.fillBleed(0.02, "out");
       brush.polygon(ellipsePts(tx + r * 0.12, ty + r * 0.62, r * 0.9, r * 0.22, 10));
@@ -2714,9 +2736,9 @@
 
       resetBrush();
       brush.mass(B.crayon, pal("sapDeep"), {
-        precision: 0.42,
-        strength: 0.84,
-        gradient: 0.22,
+        precision: 0.46,
+        strength: 0.66,
+        gradient: 0.26,
         outline: false
       });
       brush.circle(tx, ty, r, 0.55);
@@ -2733,16 +2755,30 @@
 
       resetBrush();
       analogTooth();
-      brush.set(B.charcoal, pal("sapDeep"), 0.36);
-      brush.circle(tx, ty, r * 0.98, 0.52);
+      brush.set(B.charcoal, pal("sapDeep"), 0.42);
+      shape(lobedCircle(tx, ty, r * 0.97, 7 + Math.round(hash(g.seed + ":lobes") * 4),
+        0.055, g.seed), true, 0.22);
       brush.noField();
+
+      // Trunk mark at the centre — the convention that separates a specimen
+      // tree from a mass of shrubs, and gives the canopy a centre to read from
+      resetBrush();
+      brush.fill(lotBackdropColor(), 232);
+      brush.fillBleed(0);
+      brush.polygon(ellipsePts(tx, ty, r * 0.19, r * 0.19, 14));
+      brush.noFill();
 
       resetBrush();
       analogTooth();
-      const tick = r * 0.28;
-      brush.set(random() > 0.5 ? B.HB : B.rotring, random() > 0.45 ? pal("terracotta") : pal("terraDeep"), 0.5);
-      brush.line(tx - tick * 0.08, ty + r * 0.08, tx + tick * 0.1, ty + r * 0.08 + tick);
+      brush.set(B.rotring, pal("ink"), 0.5);
+      brush.circle(tx, ty, r * 0.19, 0.5);
       brush.noField();
+
+      resetBrush();
+      brush.fill(pal("ink"), 215);
+      brush.fillBleed(0);
+      brush.polygon(ellipsePts(tx, ty, r * 0.075, r * 0.075, 10));
+      brush.noFill();
       resetBrush();
     }
 
@@ -2758,7 +2794,7 @@
       const rib = ribbon(pts, halfW);
 
       resetBrush();
-      const fillCol = random() > 0.28 ? pal("terracotta") : pal("pave");
+      const fillCol = hash(g.seed + ":mat") > 0.28 ? pal("terracotta") : pal("pave");
       forOpenRibbonQuads(pts, halfW, function (q) {
         brush.fill(fillCol, random(96, 128));
         brush.fillBleed(0);
@@ -2771,12 +2807,14 @@
 
       resetBrush();
       analogTooth();
-      brush.set(B.charcoal, pal("ink"), 0.6);
+      brush.set(B.charcoal, pal("ink"), 0.58);
       shape(chaikin(jitter(left, 0.35), 2, false), false, 0.22);
-      brush.set(B.HB, pal("ink"), 0.48);
+      brush.set(B.charcoal, pal("ink"), 0.54);
       shape(chaikin(jitter(right, 0.35), 2, false), false, 0.22);
-      brush.set(B.rotring, pal("ink"), 0.36);
+      brush.set(B.rotring, pal("ink"), 0.3);
       shape(chaikin(jitter(left, 0.25), 1, false), false, 0.14);
+      brush.set(B.rotring, pal("ink"), 0.28);
+      shape(chaikin(jitter(right, 0.25), 1, false), false, 0.14);
 
       analogTooth();
       brush.set(B.HB, pal("ink"), 0.44);
@@ -2840,27 +2878,30 @@
       brush.noFill();
 
       resetBrush();
-      brush.hatchStyle(B.H2, random() > 0.4 ? pal("waterDeep") : pal("water"), random(0.28, 0.4));
-      brush.hatch(random(12, 20), random(6, 28), {
-        rand: 0.15,
-        continuous: false,
-        gradient: 0
-      });
-      brush.polygon(outline);
-      brush.noHatch();
-
-      resetBrush();
       analogTooth();
       brush.set(B.charcoal, pal("waterDeep"), 0.72);
       shape(outline, true, g.boxy ? 0.04 : 0.42);
       brush.set(B.pen, pal("water"), 0.4);
       shape(jitter(outline, 0.9), true, g.boxy ? 0.04 : 0.4);
 
-      const shore = insetClosed(outline, random(5, 8));
-      analogTooth();
-      brush.set(B.H2, pal("waterDeep"), random(0.32, 0.44));
-      const shoreLoop = shore.concat([shore[0]]);
-      dashPath(jitter(shoreLoop, 0.6), random(7, 11), random(4, 7));
+      // Water is read by lines that follow the shore, densest at the edge.
+      // A straight ruled hatch across the basin read as a glazed panel.
+      // Start clear of the shoreline stroke — the rim is inked heavy enough
+      // that rings tucked right against it disappear underneath it.
+      const step = Math.max(7, Math.min(width, height) * 0.011);
+      const fade = [0.5, 0.32, 0.2];
+      let inset = random(11, 15);
+      for (let ring = 0; ring < 3; ring++) {
+        const loop = insetClosed(outline, inset);
+        if (!loop || loop.length < 6) break;
+        analogTooth();
+        brush.set(ring === 0 ? B.H2 : B.rotring,
+          ring === 0 ? pal("waterDeep") : pal("water"),
+          fade[ring] * random(0.9, 1.12));
+        dashPath(jitter(loop.concat([loop[0]]), 0.6),
+          random(7, 11) + ring * 4, random(5, 8) + ring * 4);
+        inset += step * (1 + ring * 0.8);
+      }
 
       brush.noField();
       resetBrush();
@@ -2878,53 +2919,56 @@
       const right = offsetEdge(pts, -halfW);
       const flow = headingOf(pts);
 
+      // Per-quad fills band the channel like a boardwalk (each quad's texture
+      // fades at its own edge); a heavily textured single polygon blooms a halo
+      // past the banks. One polygon with the texture dialled down does neither.
       resetBrush();
-      forOpenRibbonQuads(pts, halfW, function (q) {
-        brush.fill(pal("water"), random(190, 210));
+      if (rib && rib.length >= 4) {
+        brush.fill(pal("water"), 196);
         brush.fillBleed(0);
-        brush.fillTexture(0.5, 0.45);
-        brush.polygon(q);
-        resetBrush();
+        brush.fillTexture(0.1, 0.22);
+        brush.polygon(rib);
         brush.noFill();
-        brush.noHatch();
-      });
+      }
 
       resetBrush();
-      forOpenRibbonQuads(pts, halfW * 0.5, function (q) {
-        brush.fill(pal("waterDeep"), random(110, 140));
+      if (core && core.length >= 4) {
+        brush.fill(pal("waterDeep"), 118);
         brush.fillBleed(0);
-        brush.fillTexture(0.55, 0.4);
-        brush.polygon(q);
-        resetBrush();
+        brush.fillTexture(0.12, 0.2);
+        brush.polygon(core);
         brush.noFill();
-        brush.noHatch();
-      });
+      }
 
+      // Banks are continuous — dashed edges plus cross ticks made the rill
+      // read as paving. Flow is carried by sparse downstream chevrons.
       analogTooth();
       if (left && left.length >= 2) {
-        brush.set(B.H2, pal("water"), random(0.44, 0.58));
-        dashPath(left, 11, 6);
+        brush.set(B.HB, pal("waterDeep"), random(0.5, 0.6));
+        shape(left, false, 0.16);
       }
       analogTooth();
       if (right && right.length >= 2) {
-        brush.set(B.rotring, pal("water"), random(0.38, 0.5));
-        dashPath(right, 10, 6);
+        brush.set(B.HB, pal("waterDeep"), random(0.48, 0.58));
+        shape(right, false, 0.16);
       }
+
       analogTooth();
-      brush.set(B.H2, pal("water"), random(0.4, 0.54));
-      const tickGap = Math.max(20, halfW * 1.9);
-      let acc = tickGap * 0.35;
+      brush.set(B.HB, pal("waterDeep"), random(0.62, 0.78));
+      const flowGap = Math.max(52, halfW * 6);
+      let acc = flowGap * 0.5;
       for (let i = 1; i < pts.length; i++) {
         const d = dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
         acc += d;
-        if (acc < tickGap) continue;
+        if (acc < flowGap) continue;
         acc = 0;
         const x = pts[i][0];
         const y = pts[i][1];
         const heading = atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0]);
-        const arm = halfW * 0.46;
-        brush.line(x, y, x + cos(heading + 148) * arm, y + sin(heading + 148) * arm);
-        brush.line(x, y, x + cos(heading - 148) * arm, y + sin(heading - 148) * arm);
+        const arm = halfW * 0.95;
+        // Chevron opening upstream, apex pointing the way the water runs
+        brush.line(x, y, x - cos(heading + 34) * arm, y - sin(heading + 34) * arm);
+        brush.line(x, y, x - cos(heading - 34) * arm, y - sin(heading - 34) * arm);
       }
       brush.noField();
       resetBrush();
@@ -2936,7 +2980,7 @@
       const closed = !!g.closed;
       const boxy = !!g.boxy;
       const minS = Math.min(width, height);
-      const halfW = g.halfW != null ? g.halfW : minS * 0.013;
+      const halfW = g.halfW != null ? g.halfW : minS * 0.0062;
       // A boxy wall must not be run through chaikin — it rounds the four
       // corners away and the courtyard comes back as an oval.
       const pts = boxy
@@ -2948,9 +2992,11 @@
       const rib = ribbon(pts, halfW, closed);
 
       resetBrush();
+      // Ink poché between the two faces — green belonged to the planting
+      // family and made every wall read as a clipped hedge.
       if (closed) {
-        brush.hatchStyle(random() > 0.5 ? B.H2 : B.HB, pal("sapDeep"), random(0.28, 0.38));
-        brush.hatch(random(7, 11), headingOf(pts) + 90, {
+        brush.hatchStyle(random() > 0.5 ? B.H2 : B.HB, pal("ink"), random(0.3, 0.4));
+        brush.hatch(random(5, 8), headingOf(pts) + 90, {
           rand: 0.1,
           continuous: false,
           gradient: 0
@@ -2958,14 +3004,10 @@
         brush.polygon(rib);
         brush.noHatch();
       } else {
-        forOpenRibbonQuads(pts, halfW, function (q) {
-          brush.fill(pal("sapDeep"), random(70, 110));
-          brush.fillBleed(0);
-          brush.polygon(q);
-          resetBrush();
-          brush.noFill();
-          brush.noHatch();
-        });
+        brush.fill(pal("ink"), 100);
+        brush.fillBleed(0);
+        forOpenRibbonQuads(pts, halfW, function (q) { brush.polygon(q); });
+        brush.noFill();
       }
 
       resetBrush();
@@ -2978,8 +3020,8 @@
 
       analogTooth();
       brush.set(B.rotring, pal("ink"), 0.4);
-      const copePts = resample(pts, Math.max(10, halfW * 3.2), closed);
-      const copeLen = halfW * 0.7;
+      const copePts = resample(pts, Math.max(14, halfW * 5.5), closed);
+      const copeLen = halfW * 0.5;
       for (let i = 0; i < copePts.length; i++) {
         const h = headingAt(copePts, i, closed);
         const nx = -sin(h);
