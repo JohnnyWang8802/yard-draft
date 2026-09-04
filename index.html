@@ -326,6 +326,11 @@
   </style>
   <script src="vendor/p5.min.js"></script>
   <script>window.p5 || document.write('<script src="https://cdn.jsdelivr.net/npm/p5@2.2.3/lib/p5.min.js"><\/script>')</script>
+  <!-- vendor/p5.brush.js carries one local patch: p5.brush syncs the canvas
+       size once and never again (isCanvasReady: vn || Sn()), so after a window
+       resize it composites through masks and a blend buffer still sized for the
+       old canvas and stamps stale ink onto the sheet. The patch re-syncs when
+       the dimensions actually change. The CDN fallback below is unpatched. -->
   <script src="vendor/p5.brush.js"></script>
   <script>window.brush || document.write('<script src="https://cdn.jsdelivr.net/npm/p5.brush@2.2.2/dist/p5.brush.js"><\/script>')</script>
 </head>
