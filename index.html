@@ -759,7 +759,7 @@
       vellumAlpha = next;
       const sl = document.getElementById("vellum-alpha");
       if (sl && Number(sl.value) !== vellumAlpha) sl.value = String(vellumAlpha);
-      invalidateSheetCache();
+      // Paper alpha is live (not in stroke cache) — no invalidate
       redraw();
       if (flash) flashAlphaPct();
     }
@@ -2028,7 +2028,7 @@
     }
 
     function bakeWorldCache() {
-      // Bake lot+gestures at zoom=1 / pan=0 (crop to lot — desk dots stay screen-fixed)
+      // Bake ink only at zoom=1 — no tray/paper (keeps alpha so dots show through yellow)
       const hz = viewZoom;
       const hx = viewPanX;
       const hy = viewPanY;
@@ -2039,10 +2039,10 @@
         push();
         resetMatrix();
         translate(-width / 2, -height / 2);
-        background(pal("tray"));
+        clear();
         resetBrush();
         bakingWorld = true;
-        drawWorldSheet();
+        drawInkLayers();
         bakingWorld = false;
         pop();
         resetBrush();
@@ -2056,7 +2056,7 @@
     }
 
     function drawDotGrid() {
-      // Desk black dots (WEBGL-safe circles). Lot fill covers dots under rice paper.
+      // Desk black dots (WEBGL-safe circles). Show through translucent yellow paper.
       push();
       noStroke();
       const ink = color(pal("ink"));
@@ -2071,7 +2071,8 @@
       pop();
     }
 
-    function drawWorldSheet() {
+    function drawInkLayers() {
+      // Soft lot ticks + gestures — no paper/tray (baked into stroke cache)
       drawLot();
       for (let i = 0; i < gestures.length; i++) {
         const hg = gestures[i];
@@ -2083,7 +2084,6 @@
         } else drawHandLayer(hg);
       }
       if (!vellumLifted()) {
-        drawVellumSheet();
         for (let i = 0; i < gestures.length; i++) {
           const rg = gestures[i];
           if (rg.agent) {
@@ -2093,28 +2093,35 @@
             pop();
           } else renderGesture(rg);
         }
-      } else if (vellumKey) {
-        drawVellumSheet();
       }
-      // Border after fill/vellum (skip while baking — redrawn after blit in world space)
+    }
+
+    function drawLotPaper() {
+      // Translucent yellow rice paper (live, not baked) — dots show through
+      if (!vellumLifted()) drawVellumSheet();
+      else if (vellumKey) drawVellumSheet();
+    }
+
+    function drawWorldSheet() {
+      drawLotPaper();
+      drawInkLayers();
       if (!bakingWorld) drawLotBorder();
     }
 
     function composeViewport(extraWorld) {
-      // Screen: tray + dots; world: cache (or live sheet); screen HUD
+      // dots → translucent yellow → ink blit → dashed border → HUD
       background(pal("tray"));
       push();
       translate(-width / 2, -height / 2);
       drawDotGrid();
       push();
       applyWorldView();
+      drawLotPaper();
       if (!blitWorldCache()) {
         resetBrush();
-        drawWorldSheet();
-      } else {
-        // Border in world space after blit (cache has fill only; no ghost screen-space dash)
-        drawLotBorder();
+        drawInkLayers();
       }
+      drawLotBorder();
       if (extraWorld) extraWorld();
       pop();
       drawNorthScale();
@@ -2288,24 +2295,8 @@
     }
 
     function drawLot() {
-      noStroke();
-      // Soft desk→paper lift (breathing), no CAD chrome
-      fill(0, 0, 0, 18);
-      beginShape();
-      vertex(lot.x + 5, lot.y + 7);
-      vertex(lot.x + lot.w + 5, lot.y + 7);
-      vertex(lot.x + lot.w + 5, lot.y + lot.h + 7);
-      vertex(lot.x + 5, lot.y + lot.h + 7);
-      endShape(CLOSE);
-      fill(pal("paper"));
-      beginShape();
-      vertex(lot.x, lot.y);
-      vertex(lot.x + lot.w, lot.y);
-      vertex(lot.x + lot.w, lot.y + lot.h);
-      vertex(lot.x, lot.y + lot.h);
-      endShape(CLOSE);
-      noFill();
-      // Soft under-edges still brush (inside lot, baked with fill)
+      // Opaque paper plate removed — yellow rice paper is drawLotPaper (vellumAlpha).
+      // Soft under-edge tick marks stay as light ink (drawn with gestures bake path via ink).
       resetBrush();
       analogTooth();
       const x0 = lot.x;
