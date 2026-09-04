@@ -1667,10 +1667,12 @@
       lot.w = width - lot.x - pad;
       lot.h = height - pad * 2;
       lot.minS = m;
-      lot.northX = width - pad * 0.46;
-      lot.northY = pad * 0.38;
-      lot.scaleX = width - pad * 0.32;
-      lot.scaleY = lot.y + lot.h + Math.max(16, pad * 0.32);
+      // North and scale share one axis down the right gutter, so the two marks
+      // line up instead of each finding its own edge. The axis sits in the
+      // middle of the margin between the sheet and the canvas edge.
+      lot.hudAxis = width - Math.max(26, pad * 0.5);
+      lot.hudTop = Math.max(14, pad * 0.34);
+      lot.scaleY = lot.y + lot.h + Math.max(18, pad * 0.36);
     }
 
     function freeCachedImage(img) {
@@ -2683,85 +2685,96 @@
     }
 
     function drawNorthScale() {
-      // Crisp, judge-readable marks (non-brush). Slight north bias 8–12°.
-      // No compass rose, no tip crossbar, no numerals on the scale.
-      const L = lot.minS * 0.09;
-      const rot = random(8, 12);
-      const ux = sin(rot);
-      const uy = -cos(rot);
-      const nS = 16;
-      const lotRight = lot.x + lot.w;
-      const lotBot = lot.y + lot.h;
-      let tipX = lot.northX;
-      let tipY = lot.northY;
-      let tailX = tipX - ux * L;
-      let tailY = tipY - uy * L;
-      const open = 40;
-      const arm = 0.36 * L;
-      const bx = -ux;
-      const by = -uy;
-      const oc = cos(open);
-      const os = sin(open);
-      let a1x = tipX + (bx * oc - by * os) * arm;
-      let a1y = tipY + (bx * os + by * oc) * arm;
-      let a2x = tipX + (bx * oc + by * os) * arm;
-      let a2y = tipY + (-bx * os + by * oc) * arm;
-      // Keep arrow+N fully on-canvas (N was clipping the right edge)
-      const nW = nS * 0.72;
-      const nGap = 10;
-      const clearR = 18;
-      const minX = Math.min(tipX, tailX, a1x, a2x);
-      let dx = 0;
-      if (minX < lotRight + clearR) dx = lotRight + clearR - minX;
-      let needRight = tipX + nGap + nW + 8;
-      if (needRight + dx > width - 6) dx -= (needRight + dx) - (width - 6);
-      if (dx) {
-        tipX += dx;
-        tailX += dx;
-        a1x += dx;
-        a2x += dx;
-      }
-
+      const minS = lot.minS;
       const ink = color(pal("ink"));
+      let axis = lot.hudAxis;
+
+      // ---- north ------------------------------------------------------------
+      // The N sits on the arrow's own axis, above the tip. Beside the tip it
+      // needed horizontal room the gutter does not have, which is what pushed
+      // the old mark into the canvas edge.
+      const nH = Math.max(9, minS * 0.023);
+      const nW = nH * 0.74;
+      const gap = Math.max(6, minS * 0.015);
+      const L = Math.max(32, minS * 0.07);
+      const rot = 7;                       // a few degrees off true, by hand
+      const bx = -sin(rot);                // tip -> tail
+      const by = cos(rot);
+      const barb = L * 0.26;
+      const open = 24;
+
+      // keep the whole mark inside the canvas and clear of the sheet
+      const halfWide = Math.max(nW / 2, barb * sin(open) + 1.5);
+      axis = Math.min(axis, width - halfWide - 5);
+      axis = Math.max(axis, lot.x + lot.w + halfWide + 7);
+
+      const tipY = lot.hudTop + nH + gap;
+      const tailX = axis + bx * L;
+      const tailY = tipY + by * L;
+
       push();
       stroke(ink);
-      strokeWeight(1.65);
       strokeCap(ROUND);
       strokeJoin(ROUND);
       noFill();
-      line(tailX, tailY, tipX, tipY);
-      line(tipX, tipY, a1x, a1y);
-      line(tipX, tipY, a2x, a2y);
-      // N to the left of the tip when near the right edge; else right of tip, clear of pole
-      let nx = tipX + nGap;
-      if (nx + nW > width - 6) nx = tipX - nGap - nW;
-      const ny = tipY - 2;
-      strokeWeight(1.55);
-      line(nx, ny, nx, ny - nS);
-      line(nx, ny - nS, nx + nW, ny);
-      line(nx + nW, ny, nx + nW, ny - nS);
+      strokeWeight(1.5);
+      line(tailX, tailY, axis, tipY);
+      const c1 = cos(open), s1 = sin(open);
+      line(axis, tipY, axis + (bx * c1 - by * s1) * barb, tipY + (bx * s1 + by * c1) * barb);
+      line(axis, tipY, axis + (bx * c1 + by * s1) * barb, tipY + (-bx * s1 + by * c1) * barb);
+
+      const nx = axis - nW / 2;
+      const ny = tipY - gap;
+      strokeWeight(1.4);
+      line(nx, ny, nx, ny - nH);
+      line(nx, ny - nH, nx + nW, ny);
+      line(nx + nW, ny, nx + nW, ny - nH);
       pop();
 
-      // HUD scale: fixed world length, screen length tracks viewZoom (no CAD numerals)
-      const bar = constrain(lot.minS * 0.12 * viewZoom, lot.minS * 0.06, lot.minS * 0.28);
-      let rx = lot.scaleX;
-      let sy = lot.scaleY;
-      if (sy < lotBot + 12) sy = lotBot + 12;
-      if (rx < lotRight + 16) rx = Math.min(width - 10, lotRight + 16);
-      if (rx > width - 8) rx = width - 8;
+      // ---- scale ------------------------------------------------------------
+      // A graphic scale: alternating cells, finer on the left, coarser on the
+      // right. The old bar was two rules with a swept tick at each end, which
+      // read as a double-headed arrow — a resize handle, not a measure.
+      const bar = constrain(minS * 0.11 * viewZoom, minS * 0.055, minS * 0.24);
+      const h = Math.max(3, minS * 0.0075);
+      // Below the sheet while there is room for it to breathe; otherwise into
+      // the sheet's own bottom-right corner, where a title block would sit.
+      const below = lot.scaleY;
+      const roomBelow = height - (below + h + h * 1.15);
+      const inside = roomBelow < Math.max(16, lot.pad * 0.3);
+      const rx = inside
+        ? lot.x + lot.w - Math.max(14, lot.pad * 0.32)
+        : Math.min(axis, width - 5);
       const lx = rx - bar;
-      const gap = 3.9;
-      const tick = 10;
-      const tAng = 18;
+      const sy = inside
+        ? lot.y + lot.h - h - Math.max(16, lot.pad * 0.34)
+        : below;
+      const half = bar / 2;
+
       push();
-      stroke(ink);
-      strokeWeight(1.45);
-      strokeCap(ROUND);
+      rectMode(CORNER);
+      const solid = color(pal("ink"));
+      solid.setAlpha(210);
+      noStroke();
+      fill(solid);
+      for (let i = 0; i < 4; i++) {
+        if (i % 2 === 0) rect(lx + (i * half) / 4, sy, half / 4, h);
+      }
+      for (let i = 0; i < 2; i++) {
+        if (i % 2 === 0) rect(lx + half + (i * half) / 2, sy, half / 2, h);
+      }
       noFill();
-      line(lx, sy, rx, sy);
-      line(lx, sy + gap, rx, sy + gap);
-      line(lx, sy, lx + cos(tAng) * tick, sy - sin(tAng) * tick);
-      line(rx, sy, rx - cos(tAng) * tick, sy - sin(tAng) * tick);
+      const edge = color(pal("ink"));
+      edge.setAlpha(225);
+      stroke(edge);
+      strokeWeight(1);
+      strokeCap(SQUARE);
+      rect(lx, sy, bar, h);
+      // end and midpoint ticks, dropped below the bar
+      const t = h * 1.15;
+      line(lx, sy + h, lx, sy + h + t);
+      line(lx + half, sy + h, lx + half, sy + h + t * 0.7);
+      line(rx, sy + h, rx, sy + h + t);
       pop();
     }
 
