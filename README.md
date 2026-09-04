@@ -42,7 +42,7 @@ Implementation notes:
 - Fallback for local smoke without native WebMCP: `window.__YardDraftWebMCP.invoke(name, input)`.
 - Points are inside the dashed lot, scaled `0–1` left→right / top→bottom.
 
-No new UI chrome was added for the agent path; the rail stays the human pencil tray. Empty-lot line: *You lay roughly. An agent can finish the sheet — same paper.*
+No new UI chrome was added for the agent path; the rail stays the human pencil tray. Empty-lot line: *You sketch the idea. An agent finishes a courtyard you could hang.* Soft pill when tools are ready: *7 tools on this sheet*. Agent strokes share the hand path, ink a touch lighter — no Agent labels.
 
 ## Play locally
 

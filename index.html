@@ -665,6 +665,38 @@
     let deskLift = false;
     const SETTLE_MS = 700;
     const DOCK_W = 232;
+    let viewZoom = 1;
+    let viewPanX = 0;
+    let viewPanY = 0;
+    const VIEW_ZMIN = 0.5;
+    const VIEW_ZMAX = 2.5;
+    const DOT_STEP = 14;
+
+    function lotCenter() {
+      return [lot.x + lot.w * 0.5, lot.y + lot.h * 0.5];
+    }
+
+    function applyWorldView() {
+      const c = lotCenter();
+      translate(viewPanX, viewPanY);
+      translate(c[0], c[1]);
+      scale(viewZoom);
+      translate(-c[0], -c[1]);
+    }
+
+    function sheetFromScreen(sx, sy) {
+      const c = lotCenter();
+      let x = sx - viewPanX;
+      let y = sy - viewPanY;
+      x = (x - c[0]) / viewZoom + c[0];
+      y = (y - c[1]) / viewZoom + c[1];
+      return [x, y];
+    }
+
+    function worldPointer(evt) {
+      const s = canvasXY(evt);
+      return sheetFromScreen(s[0], s[1]);
+    }
 
     function overSheet(x, y) {
       if (x == null || y == null) {
@@ -674,16 +706,27 @@
       return x >= DOCK_W && x <= width && y >= 0 && y <= height;
     }
 
+    function inLotWorld(x, y) {
+      return x >= lot.x && x <= lot.x + lot.w && y >= lot.y && y <= lot.y + lot.h;
+    }
+
     function inLot(x, y) {
+      if (x == null || y == null) {
+        const w = sheetFromScreen(mouseX, mouseY);
+        x = w[0];
+        y = w[1];
+      }
+      return inLotWorld(x, y);
+    }
+
+    function onDesk(x, y) {
       if (x == null || y == null) {
         x = mouseX;
         y = mouseY;
       }
-      return x >= lot.x && x <= lot.x + lot.w && y >= lot.y && y <= lot.y + lot.h;
-    }
-
-    function onDesk(x, y) {
-      return overSheet(x, y) && !inLot(x, y);
+      if (!overSheet(x, y)) return false;
+      const w = sheetFromScreen(x, y);
+      return !inLotWorld(w[0], w[1]);
     }
 
     function vellumLifted() {
@@ -1322,12 +1365,23 @@
       if (drawing || suppressExport) return;
       const holdKey = vellumKey;
       const holdDesk = deskLift;
+      const holdZ = viewZoom;
+      const holdPX = viewPanX;
+      const holdPY = viewPanY;
       vellumKey = false;
       deskLift = false;
+      viewZoom = 1;
+      viewPanX = 0;
+      viewPanY = 0;
+      invalidateSheetCache();
       redraw();
       saveCanvas("yard-draft", "png");
       vellumKey = holdKey;
       deskLift = holdDesk;
+      viewZoom = holdZ;
+      viewPanX = holdPX;
+      viewPanY = holdPY;
+      invalidateSheetCache();
       if (vellumLifted()) redraw();
     }
 
@@ -1504,15 +1558,17 @@
     }
 
     function mouseMoved() {
-      if (drawing) sampleLive(mouseX, mouseY);
-      else armSettle();
+      if (drawing) {
+        const wxy = sheetFromScreen(mouseX, mouseY);
+        sampleLive(wxy[0], wxy[1]);
+      } else armSettle();
     }
 
     function beginStroke(evt) {
       if (drawing || strokeLock) return false;
       if (livePts && livePts.length) return false;
-      const xy = canvasXY(evt);
-      if (!inLot(xy[0], xy[1])) return false;
+      const xy = worldPointer(evt);
+      if (!inLotWorld(xy[0], xy[1])) return false;
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
       // Ensure committed sheet is cached before live drag (no per-frame full redraw)
       if (!sheetCache) {
@@ -1531,9 +1587,9 @@
 
     function sampleLive(x, y) {
       if (!drawing || !livePts) return;
-      if (!overSheet(x, y)) return;
+      if (!inLotWorld(x, y) && livePts.length < 2) return;
       const last = livePts[livePts.length - 1];
-      if (dist(x, y, last[0], last[1]) < 0.5) return;
+      if (dist(x, y, last[0], last[1]) < 0.5 / viewZoom) return;
       livePts.push([x, y]);
       const now = millis();
       if (now - lastDragDraw >= 28) {
@@ -1550,11 +1606,11 @@
       }
       if (list && list.length) {
         for (let i = 0; i < list.length; i++) {
-          const xy = canvasXY(list[i]);
+          const xy = worldPointer(list[i]);
           sampleLive(xy[0], xy[1]);
         }
       } else {
-        const xy = canvasXY(evt);
+        const xy = worldPointer(evt);
         sampleLive(xy[0], xy[1]);
       }
     }
@@ -1571,9 +1627,9 @@
       suppressExport = true;
       livePts = null;
       if (evt && evt.clientX != null && pts.length) {
-        const xy = canvasXY(evt);
+        const xy = worldPointer(evt);
         const last = pts[pts.length - 1];
-        if (overSheet(xy[0], xy[1]) && dist(xy[0], xy[1], last[0], last[1]) >= 0.5) {
+        if (dist(xy[0], xy[1], last[0], last[1]) >= 0.5 / viewZoom) {
           pts.push(xy);
         }
       }
@@ -1593,7 +1649,10 @@
     }
 
     function mouseDragged(evt) {
-      if (drawing) sampleLive(mouseX, mouseY);
+      if (drawing) {
+        const wxy = sheetFromScreen(mouseX, mouseY);
+        sampleLive(wxy[0], wxy[1]);
+      }
       return false;
     }
 
@@ -1608,8 +1667,10 @@
       return false;
     }
     function touchMoved(evt) {
-      if (drawing) sampleLive(mouseX, mouseY);
-      else armSettle();
+      if (drawing) {
+        const wxy = sheetFromScreen(mouseX, mouseY);
+        sampleLive(wxy[0], wxy[1]);
+      } else armSettle();
       return false;
     }
 
@@ -1811,9 +1872,24 @@
       }
     }
 
-    function drawCommittedSheet() {
+    function drawDotGrid() {
+      // Desk black dots (WEBGL-safe circles). Lot fill covers dots under rice paper.
+      push();
+      noStroke();
+      const ink = color(pal("ink"));
+      ink.setAlpha(dark ? 56 : 51); // ~0.20–0.22
+      fill(ink);
+      const x0 = DOCK_W + 8;
+      for (let x = x0; x < width; x += DOT_STEP) {
+        for (let y = 10; y < height; y += DOT_STEP) {
+          circle(x, y, 1.35);
+        }
+      }
+      pop();
+    }
+
+    function drawWorldSheet() {
       drawLot();
-      drawNorthScale();
       for (let i = 0; i < gestures.length; i++) {
         const hg = gestures[i];
         if (hg.agent) {
@@ -1837,8 +1913,20 @@
       }
     }
 
+    function drawCommittedSheet() {
+      drawDotGrid();
+      push();
+      applyWorldView();
+      drawWorldSheet();
+      pop();
+      drawNorthScale();
+    }
+
     function draw() {
-      if (drawing) sampleLive(mouseX, mouseY);
+      if (drawing) {
+        const wxy = sheetFromScreen(mouseX, mouseY);
+        sampleLive(wxy[0], wxy[1]);
+      }
       if (analogDirty) {
         passSeed += 1;
         analogDirty = false;
@@ -1848,13 +1936,11 @@
       randomSeed(passSeed);
       noiseSeed(passSeed);
 
-      // Fast path while dragging: blit cached committed sheet + live polyline only
       if (drawing && sheetCache && livePts) {
-        if (!blitSheetCache()) {
-          // fall through to full draw if blit fails
-        } else {
+        if (blitSheetCache()) {
           push();
           translate(-width / 2, -height / 2);
+          applyWorldView();
           drawLivePreview();
           pop();
           resetBrush();
@@ -1862,11 +1948,11 @@
         }
       }
 
-      // Idle hover with fresh cache: blit + hand glyph only (no brush replay)
       if (!drawing && !analogDirty && sheetCache && hasPtr && !(livePts && livePts.length)) {
         if (blitSheetCache()) {
           push();
           translate(-width / 2, -height / 2);
+          applyWorldView();
           drawHandGlyph();
           pop();
           resetBrush();
@@ -1880,16 +1966,38 @@
       resetBrush();
       drawCommittedSheet();
 
+      push();
+      applyWorldView();
       if (livePts && livePts.length) drawLivePreview();
       else if (hasPtr) drawHandGlyph();
+      pop();
 
       pop();
       resetBrush();
 
-      // Bake committed view when idle (no live stroke)
       if (!drawing && !(livePts && livePts.length)) {
         bakeSheetCache();
       }
+    }
+
+    function mouseWheel(evt) {
+      if (!overSheet()) return true;
+      const delta = evt && evt.deltaY != null ? evt.deltaY : 0;
+      if (!delta) return false;
+      const before = viewZoom;
+      const factor = delta > 0 ? 0.92 : 1.08;
+      viewZoom = constrain(viewZoom * factor, VIEW_ZMIN, VIEW_ZMAX);
+      if (viewZoom === before) return false;
+      const c = lotCenter();
+      const sx = mouseX;
+      const sy = mouseY;
+      const wx = (sx - viewPanX - c[0]) / before + c[0];
+      const wy = (sy - viewPanY - c[1]) / before + c[1];
+      viewPanX = sx - c[0] - (wx - c[0]) * viewZoom;
+      viewPanY = sy - c[1] - (wy - c[1]) * viewZoom;
+      invalidateSheetCache();
+      redraw();
+      return false;
     }
 
     function drawVellumSheet() {
@@ -2032,7 +2140,8 @@
       line(nx + nW, ny, nx + nW, ny - nS);
       pop();
 
-      const bar = lot.minS * 0.12;
+      // HUD scale: fixed world length, screen length tracks viewZoom (no CAD numerals)
+      const bar = constrain(lot.minS * 0.12 * viewZoom, lot.minS * 0.06, lot.minS * 0.28);
       let rx = lot.scaleX;
       let sy = lot.scaleY;
       if (sy < lotBot + 12) sy = lotBot + 12;
