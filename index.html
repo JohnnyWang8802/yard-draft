@@ -1677,8 +1677,9 @@
         gestures.push(plantG);
       } else if (mode === "path") {
         const halfW = minS * 0.018;
-        const dens = densify(copy, halfW * 0.5, false);
-        const spine = beautify(dens, { rounds: 2, step: Math.max(4, halfW * 0.4), jitter: 0.5, seed: seed });
+        // Smooth finish: denser sample + more Chaikin, light jitter (no hard corners)
+        const dens = densify(copy, halfW * 0.32, false);
+        const spine = beautify(dens, { rounds: 4, step: Math.max(3, halfW * 0.28), jitter: 0.16, seed: seed });
         const pathG = {
           kind: "path",
           pts: spine,
@@ -2258,7 +2259,8 @@
     function drawPathGesture(g) {
       if (!g.pts || g.pts.length < 2) return;
       resetBrush();
-      const pts = analogize(g.pts, 1.15, 1, false);
+      // Keep finished path silk-smooth; light analog only
+      const pts = analogize(g.pts, 0.4, 1, false);
       const minS = Math.min(width, height);
       const halfW = g.halfW != null ? g.halfW : minS * 0.018;
       const left = offsetEdge(pts, halfW);
@@ -2280,11 +2282,11 @@
       resetBrush();
       analogTooth();
       brush.set(B.charcoal, pal("ink"), 0.6);
-      shape(chaikin(jitter(left, 1.15), 1, false), false, 0.18);
+      shape(chaikin(jitter(left, 0.35), 2, false), false, 0.22);
       brush.set(B.HB, pal("ink"), 0.48);
-      shape(chaikin(jitter(right, 1.15), 1, false), false, 0.18);
+      shape(chaikin(jitter(right, 0.35), 2, false), false, 0.22);
       brush.set(B.rotring, pal("ink"), 0.36);
-      shape(jitter(left, 0.7), false, 0.12);
+      shape(chaikin(jitter(left, 0.25), 1, false), false, 0.14);
 
       analogTooth();
       brush.set(B.HB, pal("ink"), 0.44);
