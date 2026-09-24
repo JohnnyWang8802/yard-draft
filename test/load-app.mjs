@@ -18,7 +18,7 @@ export function appSource() {
 // flow field was on at the time. brush.wiggle() switches the field on (that
 // is what analogTooth() calls); noField() switches it off.
 export function recordingBrush() {
-  const log = { lines: [], fieldOn: false };
+  const log = { lines: [], sets: [], fieldOn: false };
   const names = ["HB", "2B", "2H", "charcoal", "crayon", "pastel", "rotring", "cpencil", "pen", "marker"];
   let shape = null;
   const b = {
@@ -28,7 +28,7 @@ export function recordingBrush() {
     wiggle() { log.fieldOn = true; },
     field() { log.fieldOn = true; },
     noField() { log.fieldOn = false; },
-    set() {}, noFill() {}, noWash() {}, noHatch() {}, noMass() {}, noStroke() {}, noClip() {},
+    set(b, c, w) { log.sets.push(w); }, noFill() {}, noWash() {}, noHatch() {}, noMass() {}, noStroke() {}, noClip() {},
     fill() {}, fillBleed() {}, fillTexture() {}, hatch() {}, hatchStyle() {}, mass() {},
     polygon() {}, circle() {}, rect() {},
     line(x0, y0, x1, y1) {
@@ -53,6 +53,7 @@ export function loadApp(extra = {}) {
     querySelectorAll: () => [], style: {}, dataset: {}, childNodes: [{}], textContent: ""
   });
   const sandbox = {
+    getComputedStyle: () => ({ getPropertyValue: () => "232px" }),
     console, Math, JSON, Date, Object, Array, Number, String, Promise, Error,
     setTimeout: noop, clearTimeout: noop, setInterval: noop, clearInterval: noop,
     requestAnimationFrame: noop,
@@ -89,7 +90,7 @@ export function loadApp(extra = {}) {
     offsetEdge, pruneFold, ribbonEdge, insetClosed, isBoxy, bboxOf, shoelace, polyLen, sidesCovered,
     squareToBbox, findCorners, remapGestures, snapshotGesture, layoutLot, headingAt, densify, resample, chaikin,
     agentLay, ribbon, beautify, analogize, jitter, readSheet: agentReadSheet, undo: agentUndo, restoreSheet, saveSheet,
-    renderGesture, ensureBrushes, B: () => B,
+    renderGesture, ensureBrushes, B: () => B, strokeWeight01,
     setSize: (w, h) => { globalThis.width = w; globalThis.height = h; } };`;
   vm.runInContext(appSource() + expose, sandbox, { filename: "index.html#app" });
   return sandbox.__app;

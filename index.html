@@ -6,6 +6,7 @@
   <title>Garth</title>
   <style>
     :root {
+      --dock-w: 232px;
       --paper: #EFE6D0;
       --tray:  #FFFFFF;
       --ink:   #2c281f;
@@ -31,13 +32,14 @@
       background: var(--tray);
       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     }
-    canvas { display: block; }
+    /* the page must not scroll or zoom under a drawing finger or pen */
+    canvas { display: block; touch-action: none; }
     #dock {
       position: fixed;
       left: 0;
       top: 0;
       bottom: 0;
-      width: 232px;
+      width: var(--dock-w);
       z-index: 30;
       pointer-events: auto;
       box-sizing: border-box;
@@ -234,6 +236,8 @@
     #actions button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
     #actions button:focus { outline: none; }
     #actions button:focus-visible { box-shadow: inset 0 0 0 1px var(--ink); }
+    #actions .ico { display: none; }
+    #actions .lbl { flex: 1 1 auto; }
     #actions .k {
       font-size: 11px;
       letter-spacing: 0.04em;
@@ -241,7 +245,7 @@
     }
     #empty {
       position: fixed;
-      left: 232px;
+      left: var(--dock-w);
       right: 0;
       top: 0;
       bottom: 0;
@@ -290,7 +294,7 @@
     }
     #webmcp-pill {
       position: fixed;
-      left: calc(232px + (100vw - 232px) / 2);
+      left: calc(var(--dock-w) + (100vw - var(--dock-w)) / 2);
       bottom: 28px;
       transform: translateX(-50%);
       z-index: 16;
@@ -339,6 +343,28 @@
     #token.on {
       opacity: 0.10;
       transition: opacity 0.07s linear;
+    }
+
+    /* A narrow screen keeps the sheet and shrinks the rail to a strip: tool
+       glyphs and action icons, names kept as accessible labels and tooltips.
+       --dock-w is read by the sketch too, so the canvas lays out against the
+       same width the rail actually takes. */
+    @media (max-width: 719px) {
+      :root { --dock-w: 64px; }
+      #dock { padding: 12px 7px 14px; }
+      #head { width: auto; justify-content: center; }
+      #head #title { display: none; }
+      #tools .tool { justify-content: center; padding-left: 0; padding-right: 0; }
+      #tools .tool .meta, #tools .tool .k { display: none; }
+      #actions button { justify-content: center; padding: 0; min-height: 44px; }
+      #actions .lbl, #actions .k { display: none; }
+      #actions .ico {
+        display: block; width: 22px; height: 22px;
+        fill: none; stroke: currentColor; stroke-width: 1.5;
+        stroke-linecap: round; stroke-linejoin: round;
+      }
+      #actions .ico .ico-fill { fill: color-mix(in srgb, var(--ink) 16%, transparent); }
+      #empty .line { max-width: 18em; font-size: 12.5px; padding: 0 12px; }
     }
   </style>
   <script src="vendor/p5.min.js?v=2.2.3"></script>
@@ -629,12 +655,12 @@
     </nav>
     <div id="foot">
       <nav id="actions">
-        <button type="button" data-act="underlay">Slip a plan under<span class="k">u</span></button>
+        <button type="button" data-act="underlay" aria-label="Slip a plan under" title="Slip a plan under"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="12" height="12" rx="1"/><rect x="8.5" y="3.5" width="12" height="12" rx="1" class="ico-fill"/></svg><span class="lbl">Slip a plan under</span><span class="k">u</span></button>
         <input type="file" id="underlay-file" accept="image/*" hidden />
-        <button type="button" data-act="undo">Undo<span class="k">z</span></button>
-        <button type="button" data-act="clear">Clear the sheet<span class="k">c</span></button>
-        <button type="button" data-act="dark">Tone<span class="k">d</span></button>
-        <button type="button" data-act="export">Take the sheet<span class="k">e</span></button>
+        <button type="button" data-act="undo" aria-label="Undo" title="Undo"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7 L4 11 L8 15"/><path d="M4.5 11 H14 a5 5 0 0 1 0 10 H11"/></svg><span class="lbl">Undo</span><span class="k">z</span></button>
+        <button type="button" data-act="clear" aria-label="Clear the sheet" title="Clear the sheet"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="4.5" width="15" height="15" rx="1"/><path d="M9 9 L15 15 M15 9 L9 15"/></svg><span class="lbl">Clear the sheet</span><span class="k">c</span></button>
+        <button type="button" data-act="dark" aria-label="Tone" title="Tone"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5 A7.5 7.5 0 0 1 12 19.5 Z" class="ico-fill"/></svg><span class="lbl">Tone</span><span class="k">d</span></button>
+        <button type="button" data-act="export" aria-label="Take the sheet" title="Take the sheet"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 V14"/><path d="M8 10.5 L12 14.5 L16 10.5"/><path d="M5 17.5 V19.5 H19 V17.5"/></svg><span class="lbl">Take the sheet</span><span class="k">e</span></button>
       </nav>
     </div>
   </div>
@@ -694,6 +720,11 @@
     let agentPending = false;
     let toolFlashTimer = null;
     let livePts = null;
+    let livePress = [];
+    let inkScale = 1;         // per-gesture ink weight, from pen pressure
+    let penSeen = false;      // once a pen draws, fingers only navigate
+    const touches = new Map();
+    let pinch = null;
     let strokeLock = false;
     let liveT0 = 0;
     let drawing = false;
@@ -710,7 +741,17 @@
     let dragCueTimer = null;
     let bakingWorld = false;
     const SETTLE_MS = 700;
-    const DOCK_W = 232;
+    const DOCK_W = 232;      // the full rail; dockW() is what is on screen now
+
+    function dockW() {
+      // Read the width the rail actually takes from the stylesheet, so a
+      // media query that narrows it and the canvas layout cannot disagree.
+      try {
+        const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dock-w"));
+        if (isFinite(v) && v > 0) return v;
+      } catch (err) {}
+      return DOCK_W;
+    }
     let viewZoom = 1;
     let viewPanX = 0;
     let viewPanY = 0;
@@ -757,7 +798,7 @@
         x = mouseX;
         y = mouseY;
       }
-      return x >= DOCK_W && x <= width && y >= 0 && y <= height;
+      return x >= dockW() && x <= width && y >= 0 && y <= height;
     }
 
     function inLotWorld(x, y) {
@@ -787,13 +828,51 @@
       return !drawing && (vellumKey || deskLift);
     }
 
-    function handPath(src, closed) {
-      // The hand layer is the faint trace of the gesture as drawn. Smoothed
-      // straight from a sparse stroke — an agent's five corners, a fast drag —
-      // one Chaikin round cuts a chamfer off every corner and the trace stops
-      // matching what was drawn. Resample first so smoothing only rounds.
+    function catmullRom(src, step, closed) {
+      // A curve through every given point — centripetal, so it neither
+      // overshoots nor loops when the points are unevenly spaced.
+      const n = src.length;
+      if (n < 3) return densify(src, step, closed);
+      const at = function (i) {
+        if (closed) return src[((i % n) + n) % n];
+        return src[Math.max(0, Math.min(n - 1, i))];
+      };
+      const out = [];
+      const segs = closed ? n : n - 1;
+      for (let i = 0; i < segs; i++) {
+        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+        const d = function (a, b) { return Math.max(1e-4, Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1]))); };
+        const t0 = 0, t1 = d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
+        const k = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+        for (let j = 0; j < k; j++) {
+          const t = t1 + (t2 - t1) * (j / k);
+          const lerp2 = function (a, b, ta, tb) {
+            const u = (t - ta) / (tb - ta);
+            return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+          };
+          const A1 = lerp2(p0, p1, t0, t1), A2 = lerp2(p1, p2, t1, t2), A3 = lerp2(p2, p3, t2, t3);
+          const B1 = lerp2(A1, A2, t0, t2), B2 = lerp2(A2, A3, t1, t3);
+          out.push(lerp2(B1, B2, t1, t2));
+        }
+      }
+      if (!closed) out.push([src[n - 1][0], src[n - 1][1]]);
+      return out;
+    }
+
+    function handPath(src, closed, sharp) {
+      // The hand layer is the faint trace of the gesture as drawn. From a hand
+      // drag's hundreds of points any smoothing just rounds it. From sparse
+      // input — an agent's handful of points, a fast drag — it has to be
+      // rebuilt first, and how depends on the shape: a boxy wall's corners
+      // are meant, so the points are joined straight; anything else is a
+      // curve through them. Joined straight, a pool came back an octagon;
+      // smoothed without rebuilding, a rectangle lost its corners.
       const step = Math.max(4, Math.min(lot.w || 400, lot.h || 400) * 0.012);
-      const pts = densify(src.map(function (pt) { return [pt[0], pt[1]]; }), step, closed);
+      let copy = src.map(function (pt) { return [pt[0], pt[1]]; });
+      // a closed stroke that repeats its first point would make a zero-length
+      // segment, and the curve turns a cusp there
+      if (closed) copy = stripClosedDup(copy);
+      const pts = sharp ? densify(copy, step, closed) : catmullRom(copy, step, closed);
       return analogize(pts, 0.4, 1, closed);
     }
 
@@ -802,20 +881,21 @@
       if (src.length === 1) src.push([src[0][0] + 0.4, src[0][1] + 8]);
       g.handSrc = src;
       g.handClosed = !!closed;
-      g.hand = src.length >= 2 ? handPath(src, g.handClosed) : src;
+      g.hand = src.length >= 2 ? handPath(src, g.handClosed, !!g.boxy) : src;
     }
 
     function refreshHands() {
       for (let i = 0; i < gestures.length; i++) {
         const g = gestures[i];
         if (!g.handSrc || g.handSrc.length < 2) continue;
-        g.hand = handPath(g.handSrc, !!g.handClosed);
+        g.hand = handPath(g.handSrc, !!g.handClosed, !!g.boxy);
       }
     }
 
     function drawHandLayer(g) {
       const pts = g.hand;
       if (!pts || pts.length < 2) return;
+      inkScale = g.weight || 1;
       resetBrush();
       analogTooth();
       brush.noFill();
@@ -823,6 +903,7 @@
       brush.set(random() > 0.5 ? B.H2 : B.charcoal, pal("ink"), random(0.30, 0.42));
       shape(pts, !!g.handClosed, 0.08);
       brush.noField();
+      inkScale = 1;
     }
 
     function canvasXY(evt) {
@@ -1619,10 +1700,11 @@
     function updateUnderlayButton() {
       const btn = document.querySelector('[data-act="underlay"]');
       if (!btn) return;
-      const k = btn.querySelector(".k");
-      btn.childNodes[0].nodeValue = underlay ? "Lift the plan out" : "Slip a plan under";
-      btn.title = underlay && underlayName ? underlayName : "";
-      if (k) k.textContent = "u";
+      const label = underlay ? "Lift the plan out" : "Slip a plan under";
+      const lbl = btn.querySelector(".lbl");
+      if (lbl) lbl.textContent = label;
+      btn.setAttribute("aria-label", label);
+      btn.title = underlay && underlayName ? label + " — " + underlayName : label;
     }
 
     // A survey scan or a phone photo of one runs to several thousand pixels a
@@ -1803,12 +1885,12 @@
     }
 
     function layoutLot() {
-      const dockW = DOCK_W;
+      const railW = dockW();
       const m = Math.min(width, height);
       const pad = m * 0.08;
       lot.pad = pad;
       // Even desk margins so the sheet feels centered on the tray
-      lot.x = dockW + pad;
+      lot.x = railW + pad;
       lot.y = pad;
       lot.w = width - lot.x - pad;
       lot.h = height - pad * 2;
@@ -1888,13 +1970,15 @@
 
     function remapGestures(to) {
       // Gestures are stored in absolute canvas coordinates, so without this a
-      // resize left the drawing where the old lot was and half the sheet ended
-      // up outside the property line.
+      // resize left the drawing where the old lot was.
       //
-      // Each gesture keeps its own place in the lot (its centroid in lot-
-      // relative terms) and is scaled about that centroid by a single factor,
-      // so nothing is stretched into an ellipse and nothing grows past the
-      // property line: the factor is the smaller of the two side ratios.
+      // The drawing moves as one piece: the lot it was drawn in is fitted,
+      // centred and uncropped, into the lot on screen now — the way a print
+      // is mounted, not rearranged. Moving each gesture by its own centroid
+      // kept each one in its place on the lot but let them drift apart on a
+      // large change of shape: trees drawn inside a wall came out outside it.
+      // Every resize is computed from the gesture's own snapshot, so the fit
+      // never compounds and returning to a shape returns the drawing exactly.
       if (!gestures.length || !(to.w > 0) || !(to.h > 0)) return;
       for (let i = 0; i < gestures.length; i++) {
         const g = gestures[i];
@@ -1903,23 +1987,10 @@
         if (!from || !base || !(from.w > 0) || !(from.h > 0)) continue;
         const s = Math.min(to.w / from.w, to.h / from.h);
         if (!isFinite(s) || s <= 0) continue;
-
-        let cx = base.x;
-        let cy = base.y;
-        if (cx == null || cy == null) {
-          const src = base.pts && base.pts.length ? base.pts : base.handSrc;
-          if (!src || !src.length) continue;
-          cx = 0;
-          cy = 0;
-          for (let k = 0; k < src.length; k++) {
-            cx += src[k][0];
-            cy += src[k][1];
-          }
-          cx /= src.length;
-          cy /= src.length;
-        }
-        const ncx = to.x + ((cx - from.x) / from.w) * to.w;
-        const ncy = to.y + ((cy - from.y) / from.h) * to.h;
+        const cx = from.x + from.w / 2;
+        const cy = from.y + from.h / 2;
+        const ncx = to.x + to.w / 2;
+        const ncy = to.y + to.h / 2;
         const mapX = function (x) { return ncx + (x - cx) * s; };
         const mapY = function (y) { return ncy + (y - cy) * s; };
         const mapList = function (src) {
@@ -1994,7 +2065,7 @@
         const out = gestures.map(function (g) {
           const b = g.base || {};
           return {
-            kind: g.kind, seed: g.seed, agent: !!g.agent,
+            kind: g.kind, seed: g.seed, agent: !!g.agent, weight: g.weight || 1,
             rill: !!g.rill, closed: !!g.closed, boxy: !!g.boxy,
             n: g.n, downSign: g.downSign,
             lotRef: g.lotRef,
@@ -2044,6 +2115,7 @@
             handClosed: !!g.closed
           };
           if (g.agent) item.agent = true;
+          if (g.weight && g.weight !== 1) item.weight = g.weight;
           return item;
         });
         if (saved.dark && !dark) {
@@ -2126,6 +2198,15 @@
       B.cpencil = pickBrush(box, ["cpencil", "2H", "HB"]);
       B.pen = pickBrush(box, ["pen", "rotring", "HB"]);
       B.marker = pickBrush(box, ["marker", "rotring", "HB", "pen"]);
+      if (!brush.__garthScaled && typeof brush.set === "function") {
+        // Every renderer sets its own stroke weight; scale them all by the
+        // gesture's pen weight here rather than touching each one.
+        const rawSet = brush.set;
+        brush.set = function (b, c, w) {
+          return rawSet.call(brush, b, c, typeof w === "number" ? w * inkScale : w);
+        };
+        brush.__garthScaled = true;
+      }
       brushReady = true;
       return true;
     }
@@ -2174,7 +2255,45 @@
       updateCaption();
       const cnv = document.querySelector("canvas");
       if (cnv) {
+        // Fingers and pens. A pen always draws. Once one has been seen, a
+        // finger only ever navigates — a palm resting on the glass must not
+        // lay ink. Without a pen, one finger draws and two pinch and pan; a
+        // second finger landing mid-stroke means a pinch, so that stroke is
+        // dropped rather than committed.
+        function touchCentre() {
+          let x = 0, y = 0;
+          touches.forEach(function (p) { x += p[0]; y += p[1]; });
+          const n = touches.size || 1;
+          x /= n; y /= n;
+          let d = 0;
+          if (touches.size >= 2) {
+            const it = touches.values();
+            const a = it.next().value, b = it.next().value;
+            d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+          }
+          return { x: x, y: y, d: d };
+        }
+        function startPinch() {
+          const c = touchCentre();
+          pinch = { lx: c.x, ly: c.y, ld: c.d };
+        }
+        function onTouchNav(e) {
+          touches.set(e.pointerId, canvasXY(e));
+          if (drawing) cancelStroke();
+          startPinch();
+          if (e.preventDefault) e.preventDefault();
+          if (cnv.setPointerCapture) { try { cnv.setPointerCapture(e.pointerId); } catch (err) {} }
+        }
+
         function onCnvDown(e) {
+          if (e.pointerType === "pen") penSeen = true;
+          if (e.pointerType === "touch") {
+            touches.set(e.pointerId, canvasXY(e));
+            if (penSeen || touches.size >= 2 || pinch) {
+              onTouchNav(e);
+              return;
+            }
+          }
           const btn = e.button != null ? e.button : 0;
           // Pan: middle button, secondary, or Space+primary
           if (!drawing && (btn === 1 || btn === 2 || (btn === 0 && spaceHeld))) {
@@ -2200,6 +2319,18 @@
           }
         }
         function onCnvMove(e) {
+          if (e.pointerType === "touch" && touches.has(e.pointerId)) {
+            touches.set(e.pointerId, canvasXY(e));
+            if (pinch) {
+              const c = touchCentre();
+              viewPanX += c.x - pinch.lx;
+              viewPanY += c.y - pinch.ly;
+              if (c.d > 0 && pinch.ld > 0) zoomAbout(c.x, c.y, viewZoom * (c.d / pinch.ld));
+              pinch.lx = c.x; pinch.ly = c.y; pinch.ld = c.d;
+              paintNow();
+              return;
+            }
+          }
           if (panning) {
             const dx = mouseX - panLastX;
             const dy = mouseY - panLastY;
@@ -2214,6 +2345,15 @@
           samplePointer(e);
         }
         function onCnvUp(e) {
+          if (e.pointerType === "touch") {
+            touches.delete(e.pointerId);
+            if (pinch) {
+              // stay in navigation until every finger has lifted
+              if (touches.size) startPinch(); else pinch = null;
+              paintNow();
+              return;
+            }
+          }
           if (panning) {
             panning = false;
             if (e.pointerId != null && cnv.releasePointerCapture) {
@@ -2294,6 +2434,8 @@
       suppressExport = true;
       hasPtr = true;
       livePts = [[xy[0], xy[1]]];
+      livePress = [];
+      notePressure(evt);
       liveT0 = millis();
       lastDragDraw = 0;
       // Do NOT loop() — sampleLive throttles redraw; sheetCache avoids re-brushing history
@@ -2314,6 +2456,12 @@
       }
     }
 
+    function notePressure(e) {
+      // Only a pen reports real pressure; a mouse sends a constant 0.5 and a
+      // finger sends 0 or 0.5 depending on the device.
+      if (e && e.pointerType === "pen" && e.pressure > 0) livePress.push(e.pressure);
+    }
+
     function samplePointer(evt) {
       if (!drawing || !livePts) return;
       let list = null;
@@ -2324,11 +2472,32 @@
         for (let i = 0; i < list.length; i++) {
           const xy = worldPointer(list[i]);
           sampleLive(xy[0], xy[1]);
+          notePressure(list[i]);
         }
       } else {
         const xy = worldPointer(evt);
         sampleLive(xy[0], xy[1]);
+        notePressure(evt);
       }
+    }
+
+    function strokeWeight01(press) {
+      // How hard the pen was pressed becomes how heavy the ink lies. A stroke
+      // at the pen's middle pressure draws exactly as a mouse stroke does.
+      if (!press || !press.length) return 1;
+      let sum = 0;
+      for (let i = 0; i < press.length; i++) sum += press[i];
+      return constrain(0.55 + 0.9 * (sum / press.length), 0.65, 1.4);
+    }
+
+    function cancelStroke() {
+      // A second finger landing mid-stroke means a pinch, not a line
+      drawing = false;
+      livePts = null;
+      livePress = [];
+      strokeLock = false;
+      suppressExport = false;
+      paintNow();
     }
 
     function endStroke(evt) {
@@ -2350,7 +2519,13 @@
         }
       }
       resetBrush();
+      const weight = strokeWeight01(livePress);
+      livePress = [];
+      const before = gestures.length;
       commitLive(pts);
+      for (let k = before; k < gestures.length; k++) {
+        if (weight !== 1) gestures[k].weight = weight;
+      }
       flashTracing();
       noLoop();
       paintNow();
@@ -2659,7 +2834,7 @@
       const ink = g.color(pal("ink"));
       ink.setAlpha(dark ? 56 : 51); // ~0.20–0.22
       g.fill(ink);
-      const x0 = DOCK_W + 8;
+      const x0 = dockW() + 8;
       for (let x = x0; x < width; x += DOT_STEP) {
         for (let y = 10; y < height; y += DOT_STEP) {
           g.circle(x, y, 1.35);
@@ -2670,7 +2845,7 @@
     }
 
     function dotKey() {
-      return Math.round(width) + "x" + Math.round(height) + ":" + (dark ? 1 : 0);
+      return Math.round(width) + "x" + Math.round(height) + ":" + (dark ? 1 : 0) + ":" + dockW();
     }
 
     function drawDotGrid() {
@@ -2812,6 +2987,18 @@
         // Recompose from fresh cache so on-screen matches blit path
         composeViewport(hasPtr ? function () { drawHandGlyph(); } : null);
       }
+    }
+
+    function zoomAbout(sx, sy, next) {
+      const before = viewZoom;
+      viewZoom = constrain(next, VIEW_ZMIN, VIEW_ZMAX);
+      if (viewZoom === before) return false;
+      const c = lotCenter();
+      const wx = (sx - viewPanX - c[0]) / before + c[0];
+      const wy = (sy - viewPanY - c[1]) / before + c[1];
+      viewPanX = sx - c[0] - (wx - c[0]) * viewZoom;
+      viewPanY = sy - c[1] - (wy - c[1]) * viewZoom;
+      return true;
     }
 
     function mouseWheel(evt) {
@@ -3130,6 +3317,15 @@
     }
 
     function renderGesture(g) {
+      inkScale = g.weight || 1;
+      try {
+        renderGestureBody(g);
+      } finally {
+        inkScale = 1;
+      }
+    }
+
+    function renderGestureBody(g) {
       randomSeed(passSeed + g.seed);
       if (g.kind === "topo") drawTopoGesture(g);
       else if (g.kind === "water") {

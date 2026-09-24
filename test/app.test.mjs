@@ -221,3 +221,85 @@ test("clearing the sheet clears the saved copy", () => {
   app.saveSheet();
   assert.equal(storage.getItem("garth.sheet.v1"), null);
 });
+
+// ---- pen pressure ----------------------------------------------------------
+
+test("pen pressure maps to ink weight, with the middle drawing as a mouse does", () => {
+  const { app } = fresh();
+  assert.equal(app.strokeWeight01([]), 1, "no pen samples: unchanged");
+  assert.ok(Math.abs(app.strokeWeight01([0.5, 0.5, 0.5]) - 1) < 1e-9, "middle pressure is weight 1");
+  assert.ok(app.strokeWeight01([0.15, 0.2]) < 0.85, "a light touch draws light");
+  assert.ok(app.strokeWeight01([0.9, 0.95]) > 1.25, "a heavy press draws heavy");
+  assert.ok(app.strokeWeight01([0]) >= 0.65 && app.strokeWeight01([1]) <= 1.4, "clamped");
+});
+
+test("a gesture's weight scales every stroke weight it sets, and only its own", () => {
+  const { app, brush } = fresh();
+  app.agentLay("path", pts(SHAPES.path[1]));
+  const g = app.gestures()[0];
+  const weights = (w) => {
+    if (w === 1) delete g.weight; else g.weight = w;
+    brush.log.sets.length = 0;
+    app.renderGesture(g);
+    return brush.log.sets.filter((v) => typeof v === "number");
+  };
+  const plain = weights(1);
+  const heavy = weights(1.3);
+  assert.ok(plain.length > 0);
+  assert.equal(heavy.length, plain.length);
+  for (let i = 0; i < plain.length; i++) {
+    assert.ok(Math.abs(heavy[i] - plain[i] * 1.3) < 1e-9, `set #${i}: ${plain[i]} -> ${heavy[i]}`);
+  }
+  // nothing leaks to the next gesture drawn
+  assert.deepEqual(weights(1), plain);
+});
+
+test("a pen weight survives save and restore", () => {
+  const storage = memoryStorage();
+  const one = fresh({ localStorage: storage }).app;
+  one.agentLay("topo", pts(SHAPES.topo[1]));
+  one.gestures()[0].weight = 1.25;
+  one.saveSheet();
+  const two = fresh({ localStorage: storage }).app;
+  two.restoreSheet();
+  assert.equal(two.gestures()[0].weight, 1.25);
+});
+
+// ---- composition -------------------------------------------------------------
+
+test("a resize keeps the composition: what was inside the wall stays inside it", () => {
+  const { app } = fresh();
+  app.agentLay("wall", pts([[0.08, 0.10], [0.92, 0.09], [0.93, 0.91], [0.08, 0.92], [0.08, 0.10]]));
+  app.agentLay("plant", pts([[0.30, 0.82]]));
+  app.agentLay("plant", pts([[0.79, 0.70]]));
+  app.agentLay("water", pts(SHAPES.pool[1]));
+  for (const [w, h] of [[375, 812], [1400, 420]]) {
+    app.setSize(w, h);
+    app.layoutLot();
+    app.remapGestures(app.lot);
+    const [wall, ...rest] = app.gestures();
+    const wb = app.bboxOf(wall.pts);
+    for (const g of rest) {
+      const c = g.x != null ? [g.x, g.y] : (() => { const b = app.bboxOf(g.pts); return [b.x + b.w / 2, b.y + b.h / 2]; })();
+      assert.ok(c[0] > wb.x && c[0] < wb.x + wb.w && c[1] > wb.y && c[1] < wb.y + wb.h,
+        `${g.kind} left the wall at ${w}x${h}`);
+    }
+  }
+});
+
+test("a sparse curved gesture's hand layer is a curve, not a polygon", () => {
+  // An agent lays a pool as eight points. Resampled with straight segments
+  // the trace comes back as an octagon around a smooth basin.
+  const { app } = fresh();
+  app.agentLay("water", pts(SHAPES.pool[1]));
+  const h = app.gestures()[0].hand;
+  let worst = 0;
+  for (let i = 1; i < h.length - 1; i++) {
+    const a = Math.atan2(h[i][1] - h[i - 1][1], h[i][0] - h[i - 1][0]);
+    const b = Math.atan2(h[i + 1][1] - h[i][1], h[i + 1][0] - h[i][0]);
+    let d = Math.abs(b - a) * 180 / Math.PI;
+    if (d > 180) d = 360 - d;
+    worst = Math.max(worst, d);
+  }
+  assert.ok(worst < 30, `sharpest turn in the trace is ${worst.toFixed(0)}°`);
+});
