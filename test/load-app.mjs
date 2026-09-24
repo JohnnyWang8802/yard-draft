@@ -18,18 +18,18 @@ export function appSource() {
 // flow field was on at the time. brush.wiggle() switches the field on (that
 // is what analogTooth() calls); noField() switches it off.
 export function recordingBrush() {
-  const log = { lines: [], sets: [], shapes: [], fieldOn: false };
+  const log = { lines: [], sets: [], shapes: [], hatch: [], wiggle: [], brushScale: 1, fieldOn: false };
   const names = ["HB", "2B", "2H", "charcoal", "crayon", "pastel", "rotring", "cpencil", "pen", "marker"];
   let shape = null;
   const b = {
     log,
     box: () => names.slice(),
-    load() {}, scaleBrushes() {},
-    wiggle() { log.fieldOn = true; },
+    load() {}, scaleBrushes(k) { log.brushScale *= k; },
+    wiggle(a) { log.fieldOn = true; log.wiggle.push(a); },
     field() { log.fieldOn = true; },
     noField() { log.fieldOn = false; },
     set(b, c, w) { log.sets.push(w); }, noFill() {}, noWash() {}, noHatch() {}, noMass() {}, noStroke() {}, noClip() {},
-    fill() {}, fillBleed() {}, fillTexture() {}, hatch() {}, hatchStyle() {}, mass() {},
+    fill() {}, fillBleed() {}, fillTexture() {}, hatch(sp) { log.hatch.push(sp); }, hatchStyle() {}, mass() {},
     polygon() {}, circle() {}, rect() {},
     line(x0, y0, x1, y1) {
       log.lines.push({ len: Math.hypot(x1 - x0, y1 - y0), field: log.fieldOn, x0, y0, x1, y1 });
@@ -90,7 +90,7 @@ export function loadApp(extra = {}) {
     offsetEdge, pruneFold, ribbonEdge, insetClosed, isBoxy, bboxOf, shoelace, polyLen, sidesCovered,
     squareToBbox, findCorners, remapGestures, snapshotGesture, layoutLot, headingAt, densify, resample, chaikin,
     agentLay, ribbon, beautify, analogize, jitter, readSheet: agentReadSheet, undo: agentUndo, restoreSheet, saveSheet,
-    renderGesture, ensureBrushes, B: () => B, strokeWeight01, drawHandLayer, wallRuns, wallOpenings, snapAlongWall, inPoly,
+    renderGesture, ensureBrushes, B: () => B, strokeWeight01, drawHandLayer, nextPaper, withDrawScale, drawScale: () => drawScale, dashPath, titleBlockLayout, setTitle, sheetTitle: () => sheetTitle, clearGestures, titleTool: agentTitle, pal, paper: () => PAPERS[paperIdx].id, wallRuns, wallOpenings, snapAlongWall, inPoly,
     cache: () => sheetCache, setCache: (v) => { sheetCache = v; bakedUpTo = gestures.length; },
     setSize: (w, h) => { globalThis.width = w; globalThis.height = h; } };`;
   vm.runInContext(appSource() + expose, sandbox, { filename: "index.html#app" });

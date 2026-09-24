@@ -441,3 +441,129 @@ test("a new gesture that changes an older one forces a full rebake", () => {
   app.agentLay("path", pts(THROUGH));                // this path cuts the wall
   assert.equal(app.cache(), null, "the wall must be redrawn with its gates");
 });
+
+// ---- paper -------------------------------------------------------------------
+
+test("Tone steps through the papers and comes back round", () => {
+  const { app } = fresh();
+  const seen = [app.paper()];
+  for (let i = 0; i < 4; i++) { app.nextPaper(); seen.push(app.paper()); }
+  assert.deepEqual(JSON.parse(JSON.stringify(seen)), ["trace", "vellum", "kraft", "night", "trace"]);
+});
+
+test("each day paper lays its own colour under the ink", () => {
+  const { app } = fresh();
+  const colours = new Set();
+  for (let i = 0; i < 3; i++) { colours.add(app.pal("vellum")); app.nextPaper(); }
+  assert.equal(colours.size, 3);
+});
+
+test("the paper is kept with the sheet and reported to agents", () => {
+  const storage = memoryStorage();
+  const one = fresh({ localStorage: storage }).app;
+  one.agentLay("topo", pts(SHAPES.topo[1]));
+  one.nextPaper(); one.nextPaper();              // kraft
+  one.saveSheet();
+  assert.equal(one.readSheet().paper, "kraft");
+  const two = fresh({ localStorage: storage }).app;
+  two.restoreSheet();
+  assert.equal(two.paper(), "kraft");
+});
+
+// ---- title block -------------------------------------------------------------
+
+for (const [w, h] of [[3691, 2215], [1400, 2400], [900, 700]]) {
+  test(`the title strip lays out without collisions on a ${w}x${h} sheet`, () => {
+    const { app } = fresh();
+    const L = app.titleBlockLayout(w, h, Math.min(w, h));
+    assert.ok(L.band > 0 && L.pad > 0);
+    // everything sits in the strip below the drawing
+    for (const y of [L.titleY, L.dateY, L.barY, L.needleTop, L.needleBottom]) {
+      assert.ok(y > h && y < h + L.band, `y ${y} outside the strip`);
+    }
+    // left to right: title, then the scale bar, then north — no overlaps
+    assert.ok(L.titleMaxW > 0);
+    assert.ok(L.pad + L.titleMaxW < L.barX, "title runs into the scale");
+    assert.ok(L.barX + L.bar < L.needleX - L.needleHalf, "scale runs into north");
+    assert.ok(L.needleX + L.needleHalf <= w - L.pad + 0.5, "north runs off the sheet");
+  });
+}
+
+test("a title is kept with the sheet and reported to agents", () => {
+  const storage = memoryStorage();
+  const one = fresh({ localStorage: storage }).app;
+  one.agentLay("topo", pts(SHAPES.topo[1]));
+  one.setTitle("  Court of the four beds  ");
+  one.saveSheet();
+  const r = one.readSheet();
+  assert.equal(r.title, "Court of the four beds", "trimmed");
+  assert.match(r.date, /^\d{4}-\d{2}-\d{2}$/);
+  const two = fresh({ localStorage: storage }).app;
+  two.restoreSheet();
+  assert.equal(two.sheetTitle(), "Court of the four beds");
+});
+
+test("title_sheet names the sheet, within reason", () => {
+  const { app } = fresh();
+  assert.equal(app.titleTool({ title: "Kitchen garden" }).ok, true);
+  assert.equal(app.sheetTitle(), "Kitchen garden");
+  assert.equal(app.titleTool({ title: "" }).ok, false, "an empty title is refused");
+  assert.equal(app.titleTool({ title: "x".repeat(200) }).title.length, 60, "long titles are cut to 60");
+});
+
+// ---- taking the sheet at size ------------------------------------------------
+
+test("drawing at k times the size scales the pen with the paper, then puts it back", () => {
+  // The export redraws the sheet several times larger. Brush weights, particle
+  // spacing, hatch spacing, dash lengths and the hand's wobble are pixels, so
+  // unscaled the whole drawing came out k times thinner and sparser.
+  const { app, brush } = fresh();
+  app.agentLay("wall", pts(COURT));
+  app.agentLay("water", pts(SHAPES.pool[1]));
+  const render = () => {
+    brush.log.lines.length = 0; brush.log.hatch.length = 0; brush.log.wiggle.length = 0;
+    for (const g of app.gestures()) app.renderGesture(g);
+    // one straight segment, so every dash is exactly one line
+    brush.log.lines.length = 0;
+    app.dashPath([[100, 100], [700, 100]], 10, 5);
+    const dashes = brush.log.lines.map((l) => l.len);
+    return { hatch: brush.log.hatch.slice(), wiggle: brush.log.wiggle.slice(), dashes };
+  };
+  const one = render();
+  const big = app.withDrawScale(3, render);
+  assert.equal(brush.log.brushScale, 1, "brush scale restored");
+  assert.equal(app.drawScale(), 1, "draw scale restored");
+  assert.ok(one.hatch.length > 0 && one.wiggle.length > 0, "something to compare");
+  for (let i = 0; i < one.hatch.length; i++) assert.ok(Math.abs(big.hatch[i] - one.hatch[i] * 3) < 1e-9, "hatch spacing");
+  for (let i = 0; i < one.wiggle.length; i++) assert.ok(Math.abs(big.wiggle[i] - one.wiggle[i] * 3) < 1e-9, "wobble");
+  assert.equal(one.dashes[0], 10, "a dash at screen size");
+  assert.equal(big.dashes[0], 30, "the same dash at three times the size");
+  assert.ok(big.dashes.length < one.dashes.length / 2.5, "fewer, longer dashes over the same line");
+});
+
+test("the draw scale is put back even when drawing throws", () => {
+  const { app, brush } = fresh();
+  assert.throws(() => app.withDrawScale(2.5, () => { throw new Error("boom"); }));
+  assert.equal(app.drawScale(), 1);
+  assert.equal(brush.log.brushScale, 1);
+});
+
+test("a wall's trace keeps its corners even when the wall is not a box", () => {
+  const { app } = fresh();
+  app.agentLay("wall", pts([[0.55, 0.2], [0.95, 0.2], [0.95, 0.95]]));   // an L
+  const g = app.gestures()[0];
+  assert.equal(g.boxy, false);
+  const L = app.lot;
+  const corner = [L.x + 0.95 * L.w, L.y + 0.2 * L.h];
+  const near = Math.min(...g.hand.map((p) => Math.hypot(p[0] - corner[0], p[1] - corner[1])));
+  assert.ok(near < Math.min(L.w, L.h) * 0.02, `trace passes ${near.toFixed(1)}px from the corner`);
+});
+
+test("clearing the sheet starts a new sheet: no title, no date", () => {
+  const { app } = fresh();
+  app.agentLay("topo", pts(SHAPES.topo[1]));
+  app.setTitle("Old garden");
+  app.clearGestures();
+  assert.equal(app.sheetTitle(), "");
+  assert.equal(app.readSheet().title, null);
+});
