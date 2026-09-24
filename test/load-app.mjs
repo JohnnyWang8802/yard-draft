@@ -18,7 +18,7 @@ export function appSource() {
 // flow field was on at the time. brush.wiggle() switches the field on (that
 // is what analogTooth() calls); noField() switches it off.
 export function recordingBrush() {
-  const log = { lines: [], sets: [], fieldOn: false };
+  const log = { lines: [], sets: [], shapes: [], fieldOn: false };
   const names = ["HB", "2B", "2H", "charcoal", "crayon", "pastel", "rotring", "cpencil", "pen", "marker"];
   let shape = null;
   const b = {
@@ -36,7 +36,7 @@ export function recordingBrush() {
     },
     beginShape() { shape = []; },
     vertex(x, y) { if (shape) shape.push([x, y]); },
-    endShape() { shape = null; }
+    endShape() { if (shape) log.shapes.push(shape); shape = null; }
   };
   return b;
 }
@@ -90,7 +90,8 @@ export function loadApp(extra = {}) {
     offsetEdge, pruneFold, ribbonEdge, insetClosed, isBoxy, bboxOf, shoelace, polyLen, sidesCovered,
     squareToBbox, findCorners, remapGestures, snapshotGesture, layoutLot, headingAt, densify, resample, chaikin,
     agentLay, ribbon, beautify, analogize, jitter, readSheet: agentReadSheet, undo: agentUndo, restoreSheet, saveSheet,
-    renderGesture, ensureBrushes, B: () => B, strokeWeight01,
+    renderGesture, ensureBrushes, B: () => B, strokeWeight01, drawHandLayer, wallRuns, wallOpenings, snapAlongWall, inPoly,
+    cache: () => sheetCache, setCache: (v) => { sheetCache = v; bakedUpTo = gestures.length; },
     setSize: (w, h) => { globalThis.width = w; globalThis.height = h; } };`;
   vm.runInContext(appSource() + expose, sandbox, { filename: "index.html#app" });
   return sandbox.__app;

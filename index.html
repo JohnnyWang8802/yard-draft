@@ -901,7 +901,18 @@
       brush.noFill();
       brush.noHatch();
       brush.set(random() > 0.5 ? B.H2 : B.charcoal, pal("ink"), random(0.30, 0.42));
-      shape(pts, !!g.handClosed, 0.08);
+      if (g.kind === "wall" && wallOpenings(g).length) {
+        // likewise the trace of a wall stroke: it opens where the wall does
+        const runs = wallRuns(g, pts);
+        for (let r = 0; r < runs.length; r++) shape(runs[r].pts, runs[r].closed, 0.08);
+      } else if (g.kind === "topo") {
+        // The trace of a contour stroke reads as one more contour, so it stops
+        // at the water's edge with the rest of the family.
+        const dry = clipRuns(pts, waterHoles(Math.min(width, height) * 0.006));
+        for (let r = 0; r < dry.length; r++) shape(dry[r], false, 0.08);
+      } else {
+        shape(pts, !!g.handClosed, 0.08);
+      }
       brush.noField();
       inkScale = 1;
     }
@@ -1344,6 +1355,35 @@
       return count;
     }
 
+    function rightAngles(pts) {
+      // How many sharp, roughly square corners a path turns. The turn at each
+      // point is measured across a window a few samples wide, so a corner
+      // drawn slightly round still reads as one corner, and an octagon's
+      // eight 45° steps read as none.
+      const n = pts.length;
+      if (n < 8) return 0;
+      const w = Math.max(2, Math.round(n / 28));
+      const turn = [];
+      for (let i = 0; i < n; i++) {
+        const a = pts[Math.max(0, i - w)], b = pts[i], c = pts[Math.min(n - 1, i + w)];
+        const h1 = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        const h2 = Math.atan2(c[1] - b[1], c[0] - b[0]);
+        let d = Math.abs(h2 - h1) * 180 / Math.PI;
+        if (d > 180) d = 360 - d;
+        turn.push(d);
+      }
+      let count = 0;
+      for (let i = 0; i < n; i++) {
+        if (turn[i] < 62 || turn[i] > 120) continue;
+        let peak = true;
+        for (let k = Math.max(0, i - w); k <= Math.min(n - 1, i + w); k++) {
+          if (turn[k] > turn[i] || (turn[k] === turn[i] && k < i)) { peak = false; break; }
+        }
+        if (peak) count++;
+      }
+      return count;
+    }
+
     function isBoxy(raw) {
       if (!raw || raw.length < 4) return false;
       const bb = bboxOf(raw);
@@ -1376,7 +1416,11 @@
         if (d <= thresh) hug++;
       }
       const hugFrac = hug / pts.length;
-      return (fill > 0.72 && axisFrac > 0.5) || (hugFrac > 0.7 && axisFrac > 0.55);
+      const shaped = (fill > 0.72 && axisFrac > 0.5) || (hugFrac > 0.7 && axisFrac > 0.55);
+      // Filling its box with sides near an axis is true of an octagonal pond
+      // too. A box also turns corners: three at least (the fourth may be the
+      // stroke's own start and end).
+      return shaped && rightAngles(pts) >= 3;
     }
 
 
@@ -2628,7 +2672,9 @@
         gestures.push(topoG);
       } else if (mode === "plant") {
         const halfW = minS * 0.019;
-        const spine = beautify(copy, { rounds: 2, step: Math.max(5, halfW * 0.32), jitter: 0.55, seed: seed });
+        const spine = snapAlongWall(
+          beautify(copy, { rounds: 2, step: Math.max(5, halfW * 0.32), jitter: 0.55, seed: seed }),
+          halfW);
         const plantG = {
           kind: "plant",
           pts: spine,
@@ -2718,6 +2764,11 @@
         for (let i = beforeCount; i < gestures.length; i++) gestures[i].agent = true;
       }
       for (let i = beforeCount; i < gestures.length; i++) snapshotGesture(gestures[i]);
+      for (let i = beforeCount; i < gestures.length; i++) {
+        // a path that cuts a wall, a pool on contours: the older gesture has
+        // to be redrawn, so the cache cannot simply be appended to
+        if (changesOthers(gestures[i])) { invalidateSheetCache(); break; }
+      }
       if (gestures.length !== beforeCount) markSheetChanged();
       showEmpty();
     }
@@ -3347,6 +3398,9 @@
       }).join("");
       const n = g.n != null ? g.n : 5;
       const spacing = g.spacing * random(0.97, 1.05);
+      // Contours stop at the water's edge. Terrain runs down to a pool; it
+      // does not carry on across the surface of it.
+      const holes = waterHoles(spacing * 0.45);
       const downSign = g.downSign != null ? g.downSign : 1;
       const offsets = {};
       for (let i = -n; i <= n; i++) {
@@ -3366,7 +3420,8 @@
         } else {
           brush.set(random() > 0.5 ? B.H2 : B.HB, lightSapGrey, random(0.34, 0.46));
         }
-        shape(chaikin(jitter(off, 0.65), 1, false), false, 0.18);
+        const dry = clipRuns(chaikin(jitter(off, 0.65), 1, false), holes);
+        for (let r = 0; r < dry.length; r++) shape(dry[r], false, 0.18);
       }
       resetBrush();
       analogTooth();
@@ -3381,6 +3436,7 @@
         for (let s = 1; s < samples.length - 1; s++) {
           if (hash(g.seed + ":g:" + k + ":" + s + ":" + passSeed) > 0.42) continue;
           const p = samples[s];
+          if (holes.length && inHole(p[0], p[1], holes)) continue;
           const mid = outer[Math.min(outer.length - 1, Math.round(s / (samples.length - 1) * (outer.length - 1)))];
           const dx = mid[0] - p[0];
           const dy = mid[1] - p[1];
@@ -3708,18 +3764,218 @@
       resetBrush();
     }
 
+    // ---- the tools know about each other ----------------------------------
+    // Each brush used to beautify its own stroke in isolation, so a path ran
+    // straight through a wall, contours ran through water, a hedge beside a
+    // wall wandered as it pleased. These read the rest of the sheet. The
+    // gate and the water's edge are worked out at draw time rather than
+    // written into the gestures, so undo, clear and restore need nothing
+    // extra: take the path away and the wall closes up.
+
+    function segCross(a, b, c, d) {
+      const r0 = b[0] - a[0], r1 = b[1] - a[1];
+      const s0 = d[0] - c[0], s1 = d[1] - c[1];
+      const den = r0 * s1 - r1 * s0;
+      if (Math.abs(den) < 1e-9) return null;
+      const t = ((c[0] - a[0]) * s1 - (c[1] - a[1]) * s0) / den;
+      const u = ((c[0] - a[0]) * r1 - (c[1] - a[1]) * r0) / den;
+      if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+      return [a[0] + r0 * t, a[1] + r1 * t];
+    }
+
+    function distToPolyline(x, y, poly, closed) {
+      let best = Infinity;
+      const n = poly.length;
+      const last = closed ? n : n - 1;
+      for (let i = 0; i < last; i++) {
+        const a = poly[i], b = poly[(i + 1) % n];
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const l2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2));
+        const d = Math.hypot(x - (a[0] + dx * t), y - (a[1] + dy * t));
+        if (d < best) best = d;
+      }
+      return best;
+    }
+
+    function wallOpenings(wall) {
+      // Where a path crosses this wall. The gate is a little wider than the
+      // walk so the stone reads as passing through, not butting against it.
+      const out = [];
+      const w = wall.pts;
+      if (!w || w.length < 2) return out;
+      const n = w.length;
+      const last = wall.closed ? n : n - 1;
+      for (let gi = 0; gi < gestures.length; gi++) {
+        const p = gestures[gi];
+        if (p.kind !== "path" || !p.pts || p.pts.length < 2) continue;
+        const r = (p.halfW || Math.min(width, height) * 0.018) * 1.45;
+        for (let j = 0; j < p.pts.length - 1; j++) {
+          for (let i = 0; i < last; i++) {
+            const hit = segCross(w[i], w[(i + 1) % n], p.pts[j], p.pts[j + 1]);
+            if (!hit) continue;
+            let dup = false;
+            for (let k = 0; k < out.length; k++) {
+              if (Math.hypot(out[k].x - hit[0], out[k].y - hit[1]) < r) { dup = true; break; }
+            }
+            if (!dup) out.push({ x: hit[0], y: hit[1], r: r });
+          }
+        }
+      }
+      return out;
+    }
+
+    function wallRuns(wall, pts) {
+      // The wall as the runs of masonry between its gates. A ring cut once
+      // is one open run; cut twice, two.
+      const gates = wallOpenings(wall);
+      if (!gates.length) return [{ pts: pts, closed: !!wall.closed }];
+      // Cutting works by dropping the points inside a gate, so the points
+      // must be closer together than a gate is wide. A boxy wall's spine is
+      // just its four corners, so resample here rather than trusting the
+      // caller to have.
+      let minR = Infinity;
+      for (let k = 0; k < gates.length; k++) minR = Math.min(minR, gates[k].r);
+      pts = densify(pts, Math.max(2, minR / 3), !!wall.closed);
+      const cut = pts.map(function (p) {
+        for (let k = 0; k < gates.length; k++) {
+          if (Math.hypot(p[0] - gates[k].x, p[1] - gates[k].y) < gates[k].r) return true;
+        }
+        return false;
+      });
+      let start = 0;
+      if (wall.closed) {
+        // begin inside a gate so no run wraps round the seam
+        const firstCut = cut.indexOf(true);
+        start = firstCut < 0 ? 0 : firstCut;
+      }
+      const runs = [];
+      let cur = [];
+      const n = pts.length;
+      for (let k = 0; k < n; k++) {
+        const i = (start + k) % n;
+        if (cut[i]) {
+          if (cur.length >= 2) runs.push({ pts: cur, closed: false });
+          cur = [];
+        } else {
+          cur.push(pts[i]);
+        }
+      }
+      if (cur.length >= 2) runs.push({ pts: cur, closed: false });
+      return runs;
+    }
+
+    function waterHoles(margin) {
+      const out = [];
+      for (let i = 0; i < gestures.length; i++) {
+        const g = gestures[i];
+        if (g.kind === "water" && !g.rill && g.pts && g.pts.length > 2) out.push({ poly: g.pts, margin: margin });
+      }
+      return out;
+    }
+
+    function inHole(x, y, holes) {
+      for (let i = 0; i < holes.length; i++) {
+        const h = holes[i];
+        if (inPoly(x, y, h.poly) || distToPolyline(x, y, h.poly, true) < h.margin) return true;
+      }
+      return false;
+    }
+
+    function clipRuns(line, holes) {
+      // A line split where it would cross water, keeping the dry runs.
+      if (!holes.length) return [line];
+      const runs = [];
+      let cur = [];
+      for (let i = 0; i < line.length; i++) {
+        if (inHole(line[i][0], line[i][1], holes)) {
+          if (cur.length >= 2) runs.push(cur);
+          cur = [];
+        } else {
+          cur.push(line[i]);
+        }
+      }
+      if (cur.length >= 2) runs.push(cur);
+      return runs.filter(function (r) { return polyLen(r) > 6; });
+    }
+
+    function snapAlongWall(spine, hedgeHalfW) {
+      // A hedge drawn beside a wall is a hedge planted along it: settle it at
+      // an even distance on the side it was drawn. Only when most of it
+      // really does run beside a wall; a hedge merely near one is left alone.
+      const band = Math.min(lot.w, lot.h) * 0.09;
+      let best = null;
+      for (let gi = 0; gi < gestures.length; gi++) {
+        const w = gestures[gi];
+        if (w.kind !== "wall" || !w.pts || w.pts.length < 2) continue;
+        const hits = [];
+        let near = 0;
+        for (let i = 0; i < spine.length; i++) {
+          const idx = nearestIndex(w.pts, spine[i][0], spine[i][1]);
+          const q = w.pts[idx];
+          const d = Math.hypot(spine[i][0] - q[0], spine[i][1] - q[1]);
+          const atEnd = !w.closed && (idx === 0 || idx === w.pts.length - 1);
+          if (d < band && !atEnd) near++;
+          hits.push({ idx: idx, d: d, atEnd: atEnd });
+        }
+        const frac = near / spine.length;
+        if (frac >= 0.75 && (!best || frac > best.frac)) best = { wall: w, hits: hits, frac: frac };
+      }
+      if (!best) return spine;
+      const w = best.wall;
+      let side = 0;
+      const ds = [];
+      const normals = best.hits.map(function (hit, i) {
+        const h = headingAt(w.pts, hit.idx, !!w.closed);
+        const nx = -sin(h), ny = cos(h);
+        const q = w.pts[hit.idx];
+        side += (spine[i][0] - q[0]) * nx + (spine[i][1] - q[1]) * ny;
+        if (!hit.atEnd) ds.push(hit.d);
+        return [nx, ny];
+      });
+      side = side >= 0 ? 1 : -1;
+      ds.sort(function (a, b) { return a - b; });
+      const median = ds.length ? ds[Math.floor(ds.length / 2)] : 0;
+      const off = Math.max(median, (w.halfW || 0) + (hedgeHalfW || 0) * 1.3);
+      const snapped = spine.map(function (p, i) {
+        const hit = best.hits[i];
+        if (hit.atEnd) return [p[0], p[1]];
+        const q = w.pts[hit.idx];
+        return [q[0] + normals[i][0] * off * side, q[1] + normals[i][1] * off * side];
+      });
+      return chaikin(snapped, 1, false);
+    }
+
+    function changesOthers(g) {
+      // Does a new gesture change how something already on the sheet draws?
+      // If so the cache cannot just be appended to.
+      if (g.kind === "path") return gestures.some(function (o) { return o !== g && o.kind === "wall"; });
+      if (g.kind === "water" && !g.rill) return gestures.some(function (o) { return o !== g && o.kind === "topo"; });
+      return false;
+    }
+
     function drawWallGesture(g) {
       if (!g.pts || g.pts.length < 2) return;
       resetBrush();
-      const closed = !!g.closed;
       const boxy = !!g.boxy;
       const minS = Math.min(width, height);
       const halfW = g.halfW != null ? g.halfW : minS * 0.0062;
       // A boxy wall must not be run through chaikin — it rounds the four
       // corners away and the courtyard comes back as an oval.
       const pts = boxy
-        ? jitter(densify(g.pts, Math.max(5, halfW * 0.6), closed), 0.75)
-        : analogize(g.pts, 0.9, 1, closed);
+        ? jitter(densify(g.pts, Math.max(5, halfW * 0.6), !!g.closed), 0.75)
+        : analogize(g.pts, 0.9, 1, !!g.closed);
+      const runs = wallRuns(g, pts);
+      const corners = g.corners && g.corners.length ? g.corners : findCorners(pts, !!g.closed);
+      for (let i = 0; i < runs.length; i++) {
+        drawWallRun(runs[i].pts, runs[i].closed, boxy, halfW, corners, runs.length > 1 || !!g.closed !== runs[i].closed);
+      }
+      brush.noField();
+      resetBrush();
+    }
+
+    function drawWallRun(pts, closed, boxy, halfW, corners, cutEnds) {
+      if (!pts || pts.length < 2) return;
       const curve = boxy ? 0.02 : 0.18;
       const left = offsetEdge(pts, halfW, closed);
       const right = offsetEdge(pts, -halfW, closed);
@@ -3767,26 +4023,41 @@
         brush.line(lx, ly, lx + nx * copeLen, ly + ny * copeLen);
       }
 
+      // Where a gate cuts the wall, close each end across its thickness so
+      // the opening reads as built, not as the wall running out of ink.
+      if (cutEnds && !closed) {
+        analogTooth();
+        brush.set(B.charcoal, pal("ink"), 0.72);
+        brush.noField();
+        const ends = [0, pts.length - 1];
+        for (let e = 0; e < ends.length; e++) {
+          const i = ends[e];
+          const h = headingAt(pts, i, false);
+          const nx = -sin(h), ny = cos(h);
+          const p = pts[i];
+          brush.line(p[0] + nx * halfW * 1.15, p[1] + ny * halfW * 1.15, p[0] - nx * halfW * 1.15, p[1] - ny * halfW * 1.15);
+        }
+      }
+
       analogTooth();
       brush.set(B.charcoal, pal("ink"), 0.62);
       // Short marks, so no flow field: under it these were dragged off the
       // corner and across the sheet as long faint diagonals.
       brush.noField();
-      const corners = g.corners && g.corners.length ? g.corners : findCorners(pts, closed);
       for (let i = 0; i < corners.length; i++) {
         const c = corners[i];
         // c.i indexes the committed spine; pts has been densified/smoothed
-        // since, so resolve the corner by position rather than by index.
+        // since, so resolve the corner by position rather than by index —
+        // and skip a corner that falls in another run or in a gate.
         const idx = nearestIndex(pts, c.x, c.y);
+        if (Math.hypot(pts[idx][0] - c.x, pts[idx][1] - c.y) > halfW * 3) continue;
         const h = headingAt(pts, idx, closed);
         const nx = -sin(h);
         const ny = cos(h);
         const cope = halfW * 1.15;
         brush.line(c.x + nx * halfW * 0.2, c.y + ny * halfW * 0.2, c.x + nx * (halfW + cope), c.y + ny * (halfW + cope));
       }
-
       brush.noField();
-      resetBrush();
     }
 
     // --- WebMCP: agent tools on the live sheet (same commit path as the hand) ---
@@ -3880,6 +4151,12 @@
         if (g.kind === "plant") item.form = "hedge";
         if (g.kind === "tree") item.form = "tree";
         if (g.closed) item.closed = true;
+        if (g.kind === "wall") {
+          const gates = wallOpenings(g);
+          if (gates.length) item.openings = gates.map(function (o) {
+            return { x: +((o.x - lot.x) / lot.w).toFixed(3), y: +((o.y - lot.y) / lot.h).toFixed(3) };
+          });
+        }
         if (src) {
           const bb = bboxOf(src);
           const nx = function (v) { return +((v - lot.x) / lot.w).toFixed(3); };
